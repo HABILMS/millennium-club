@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-playfair);
+  --font-mono: var(--font-geist-mono);
+
+  --color-obsidian: #0D0F12;
+  --color-charcoal: #161920;
+  --color-card: #1C2028;
+  --color-gold: #D4AF37;
+  --color-gold-secondary: #C5A059;
+  --color-emerald: #10B981;
+  --color-white: #F8FAFC;
+  --color-silver: #CBD5E1;
+  --color-text-secondary: #8993A4;
+  --color-alert: #EF4444;
+
+  --color-background: var(--color-obsidian);
+  --color-foreground: var(--color-white);
+  --color-muted: var(--color-charcoal);
+  --color-muted-foreground: var(--color-text-secondary);
+  --color-border: rgba(212, 175, 55, 0.15);
+  --color-ring: var(--color-gold);
+}
+
+:root {
+  --background: #0D0F12;
+  --foreground: #F8FAFC;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0D0F12;
+    --foreground: #F8FAFC;
+  }
+}
+
+* {
+  border-color: rgba(212, 175, 55, 0.15);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: rgba(212, 175, 55, 0.3);
+  color: var(--color-white);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.1), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+.glass {
+  background: rgba(28, 32, 40, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.gold-border {
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.gold-gradient {
+  background: linear-gradient(135deg, #D4AF37 0%, #C5A059 100%);
+}
+
+.text-gold-gradient {
+  background: linear-gradient(135deg, #D4AF37 0%, #C5A059 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.focus-ring:focus-visible {
+  outline: none;
+  ring: 2px;
+  ring-color: var(--color-gold);
+  ring-offset: 2px;
+  ring-offset-color: var(--color-obsidian);
+}
+
+.container-narrow {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .container-narrow {
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-narrow {
+    padding: 0 3rem;
+  }
+}
