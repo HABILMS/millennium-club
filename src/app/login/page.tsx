@@ -22,6 +22,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
+  const [showResend, setShowResend] = React.useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,10 +33,40 @@ export default function LoginPage() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
-      setError(authError.message);
+      const msg = authError.message.toLowerCase();
+      // E-mail ainda não confirmado — oferecer reenvio da confirmação
+      if (msg.includes("not confirmed") || msg.includes("email not confirmed")) {
+        setError("Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada (e spam) ou clique abaixo para receber um novo e-mail de confirmação.");
+        setShowResend(true);
+      } else {
+        setError(authError.message);
+      }
     } else {
       setSuccess("Login realizado com sucesso! Redirecionando...");
       setTimeout(() => router.push("/app"), 1000);
+    }
+    setIsLoading(false);
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email) return;
+    setIsLoading(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: getSiteUrlFor("/auth/callback?next=/app") },
+    });
+    if (resendError) {
+      const msg = resendError.message.toLowerCase();
+      if (msg.includes("rate limit") || msg.includes("too many") || msg.includes("429")) {
+        setError("Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente — o serviço de e-mail tem limite por hora.");
+      } else {
+        setError(resendError.message);
+      }
+    } else {
+      setSuccess("Novo e-mail de confirmação enviado! Verifique sua caixa de entrada e a pasta de spam.");
+      setError("");
+      setShowResend(false);
     }
     setIsLoading(false);
   };
@@ -78,6 +109,16 @@ export default function LoginPage() {
                   <div className="bg-alert/10 border border-alert/30 text-alert rounded-xl p-4 text-sm" role="alert">
                     {error}
                   </div>
+                )}
+                {showResend && (
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={isLoading}
+                    className="w-full text-sm text-gold hover:underline text-center disabled:opacity-50"
+                  >
+                    Reenviar e-mail de confirmação
+                  </button>
                 )}
                 {success && (
                   <div className="bg-emerald/10 border border-emerald/30 text-emerald rounded-xl p-4 text-sm" role="status">

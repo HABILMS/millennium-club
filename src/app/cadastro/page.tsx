@@ -53,7 +53,7 @@ export default function CadastroPage() {
     const emailParts = formData.fullName.split(" ");
     const firstName = emailParts[0] || "";
     const lastName = emailParts.slice(1).join(" ") || "";
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
       options: {
@@ -66,9 +66,14 @@ export default function CadastroPage() {
       setIsLoading(false);
       return;
     }
-    setSuccess("Conta criada com sucesso! Verifique seu e-mail para confirmar a conta.");
-      // Auto-redirect to confirmar-email page after 3 seconds
-      setTimeout(() => router.push("/confirmar-email"), 3000);
+    // Se o e-mail já existe e está confirmado, o Supabase retorna user null + identities vazio
+    // (proteção contra enumeração de e-mail) e NÃO envia novo e-mail de confirmação.
+    const emailAlreadyRegistered = !signUpData?.user || (signUpData.user.identities?.length === 0);
+    if (emailAlreadyRegistered) {
+      setSuccess("Este e-mail já possui uma conta. Se ainda não confirmou, verifique sua caixa de entrada e a pasta de spam — ou use a opção de login.");
+    } else {
+      setSuccess("Conta criada com sucesso! Verifique seu e-mail (e a pasta de spam) para confirmar a conta.");
+    }
     setIsLoading(false);
     setFormData({ fullName: "", email: "", password: "", confirmPassword: "", terms: false, marketing: false });
   };
