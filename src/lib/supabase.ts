@@ -1,6 +1,14 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from "@supabase/ssr";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+/**
+ * Cliente Supabase para o navegador com sessão em COOKIES (e não apenas
+ * localStorage). Isso é essencial: o middleware de /app valida a sessão via
+ * cookies; com createClient puro o login "funciona" mas o middleware nunca
+ * enxerga o usuário e devolve para /login em loop.
+ *
+ * O @supabase/ssr mantém localStorage + cookies em sincronia no browser.
+ */
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
