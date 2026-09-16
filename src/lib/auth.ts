@@ -9,7 +9,7 @@ export async function signInWithEmail(email: string, password: string) {
 export async function signInWithMagicLink(email: string) {
   const { data, error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: getSiteUrlFor('/app') },
+    options: { emailRedirectTo: getSiteUrlFor('/auth/callback?next=/app') },
   })
   return { data, error }
 }
@@ -55,7 +55,7 @@ export async function resendConfirmationEmail(email: string) {
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email,
-    options: { emailRedirectTo: getSiteUrlFor('/app') },
+    options: { emailRedirectTo: getSiteUrlFor('/auth/callback?next=/app') },
   })
   return { error }
 }

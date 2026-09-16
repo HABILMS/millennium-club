@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Loader2, Shield, Mail, Lock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getSiteUrlFor } from "@/lib/site-url";
+import { useRouter } from "next/navigation";
 
 export default function CadastroPage() {
   const [formData, setFormData] = React.useState({
@@ -24,6 +25,7 @@ export default function CadastroPage() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
+  const router = useRouter();
 
   const handleChange = (name: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -56,7 +58,7 @@ export default function CadastroPage() {
       password: formData.password,
       options: {
         data: { first_name: firstName, last_name: lastName },
-        emailRedirectTo: getSiteUrlFor("/app"),
+        emailRedirectTo: getSiteUrlFor("/auth/callback?next=/app"),
       },
     });
     if (signUpError) {
@@ -65,6 +67,8 @@ export default function CadastroPage() {
       return;
     }
     setSuccess("Conta criada com sucesso! Verifique seu e-mail para confirmar a conta.");
+      // Auto-redirect to confirmar-email page after 3 seconds
+      setTimeout(() => router.push("/confirmar-email"), 3000);
     setIsLoading(false);
     setFormData({ fullName: "", email: "", password: "", confirmPassword: "", terms: false, marketing: false });
   };
