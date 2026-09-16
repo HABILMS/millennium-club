@@ -16,12 +16,22 @@ function stripTrailingSlash(value: string) {
 
 export function getSiteUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (fromEnv) return stripTrailingSlash(fromEnv);
 
+  // No browser: always prefer the current origin over a potentially stale env var
   if (typeof window !== "undefined") {
+    // If the env var is set to localhost but we're clearly on production, ignore it
+    if (fromEnv && !fromEnv.includes("localhost")) {
+      return stripTrailingSlash(fromEnv);
+    }
     return window.location.origin;
   }
 
+  // Server-side: use env var if it's a real URL (not localhost)
+  if (fromEnv && !fromEnv.includes("localhost")) {
+    return stripTrailingSlash(fromEnv);
+  }
+
+  // Vercel build: use the project's production URL
   const vercelDomain =
     process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
   if (vercelDomain) return `https://${stripTrailingSlash(vercelDomain)}`;
