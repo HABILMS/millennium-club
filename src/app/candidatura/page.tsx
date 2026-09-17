@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { cn } from "@/lib/utils";
 import { ChevronRight, CheckCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 interface FormField {
   name: string;
@@ -107,10 +108,13 @@ export default function CandidaturaPage() {
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [submittedCode, setSubmittedCode] = React.useState<string | null>(null);
+  const [submitError, setSubmitError] = React.useState("");
 
   const handleChange = (name: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [name]: value }));
     setSaved(false);
+    if (submitError) setSubmitError("");
   };
 
   const formRef = React.useRef<HTMLDivElement>(null);
@@ -166,18 +170,95 @@ export default function CandidaturaPage() {
     });
 
     if (!isValid) {
-      alert("Por favor, aceite os termos obrigatórios.");
+      setSubmitError("Por favor, preencha os campos obrigatórios e aceite os termos antes de enviar.");
       return;
     }
 
     setIsSubmitting(true);
-    await new Promise(r => setTimeout(r, 1500));
-    setIsSubmitting(false);
+    setSubmitError("");
+
+    // Código de protocolo amigável (coluna `code` é unique no banco).
+    const code = `MC-${Date.now().toString(36).toUpperCase()}${Math.random()
+      .toString(36)
+      .slice(2, 6)
+      .toUpperCase()}`;
+
+    const num = (v: unknown) => {
+      const raw = String(v ?? "").trim();
+      if (raw === "") return null;
+      const n = Number(raw.replace(/\./g, "").replace(",", "."));
+      return Number.isFinite(n) ? n : null;
+    };
+    const txt = (v: unknown) => {
+      const s = String(v ?? "").trim();
+      return s === "" ? null : s;
+    };
+
+    // Mapeia os campos do formulário para as colunas da tabela `applications`.
+    const payload = {
+      code,
+      // etapa 1
+      full_name: txt(formData.fullName),
+      email: txt(formData.email)?.toLowerCase(),
+      phone: txt(formData.phone),
+      whatsapp: txt(formData.whatsapp),
+      job_title: txt(formData.jobTitle),
+      company_name: txt(formData.company),
+      country: txt(formData.country) ?? "Brasil",
+      state: txt(formData.state),
+      city: txt(formData.city),
+      linkedin: txt(formData.linkedin),
+      website: txt(formData.website),
+      languages: txt(formData.languages),
+      timezone: txt(formData.timezone) ?? "America/Sao_Paulo",
+      // etapa 2 (primary_role usa os mesmos valores do enum no banco)
+      primary_role: txt(formData.primaryRole),
+      additional_roles: txt(formData.additionalRoles),
+      sectors: txt(formData.sectors),
+      executive_bio: txt(formData.executiveBio),
+      professional_history: txt(formData.professionalHistory),
+      competencies: txt(formData.competencies),
+      key_results: txt(formData.keyResults),
+      professional_references: txt(formData.references),
+      // etapa 3
+      network_objective: txt(formData.networkObjective),
+      interest_sectors: txt(formData.interestSectors),
+      interest_regions: txt(formData.interestRegions),
+      min_ticket: num(formData.minTicket),
+      max_ticket: num(formData.maxTicket),
+      revenue_bracket: txt(formData.revenueBracket),
+      business_stages: txt(formData.businessStages),
+      preferred_models: txt(formData.preferredModels),
+      participation_interests: txt(formData.participationInterests),
+      // etapa 4
+      contribution: txt(formData.contribution),
+      committee_interests: txt(formData.committeeInterests),
+      referred_by: txt(formData.referredBy),
+      signup_source: txt(formData.signupSource),
+      privacy_policy_accepted: formData.privacyPolicy === true,
+      marketing_consent: formData.marketingConsent === true,
+      truthfulness_confirmed: formData.truthfulness === true,
+    };
+
+    const { error: insertError } = await supabase
+      .from("applications")
+      .insert(payload);
+
+    if (insertError) {
+      console.error("[candidatura] erro ao salvar:", insertError);
+      setSubmitError(
+        "Não foi possível enviar sua candidatura agora. Tente novamente em alguns instantes — se o problema persistir, fale conosco pela página de contato."
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
     localStorage.removeItem("millennium_candidatura_draft");
+    setSubmittedCode(code);
+    setIsSubmitting(false);
     setFormData({});
     setCurrentStep(1);
     scrollToFormTop();
-    alert("Candidatura enviada com sucesso! Nossa equipe entrará em contato em até 5 dias úteis.");
   };
 
   React.useEffect(() => {
@@ -248,6 +329,36 @@ export default function CandidaturaPage() {
 
         <section className="py-12">
           <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+            {submittedCode ? (
+              <Card className="glass border-emerald/30">
+                <CardContent className="p-8 sm:p-10 text-center space-y-5">
+                  <div className="h-16 w-16 rounded-full bg-emerald/10 flex items-center justify-center text-emerald mx-auto">
+                    <CheckCircle className="h-8 w-8" />
+                  </div>
+                  <h2 className="font-display text-2xl font-semibold text-white">Candidatura enviada!</h2>
+                  <p className="text-silver">
+                    Recebemos sua candidatura. Nossa equipe fará a análise e entrará em contato em até 5 dias úteis pelo e-mail informado.
+                  </p>
+                  <div className="inline-block rounded-xl border border-border bg-charcoal/50 px-8 py-4">
+                    <p className="text-xs uppercase tracking-wider text-text-secondary">Protocolo</p>
+                    <p className="font-display text-xl text-gold mt-1">{submittedCode}</p>
+                  </div>
+                  <div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSubmittedCode(null);
+                        setFormData({});
+                        setCurrentStep(1);
+                        scrollToFormTop();
+                      }}
+                    >
+                      Enviar nova candidatura
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
             <Card className="glass">
               <CardHeader className="border-b border-border">
                 <CardTitle>Etapa {currentStep} de 4: {steps[currentStep - 1].title}</CardTitle>
@@ -329,6 +440,12 @@ export default function CandidaturaPage() {
                   </div>
                 ))}
 
+                {submitError && (
+                  <div className="bg-alert/10 border border-alert/30 text-alert rounded-xl p-4 text-sm" role="alert">
+                    {submitError}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-border">
                   <Button variant="secondary" onClick={handleSaveDraft} disabled={isSubmitting}>
                     {saved ? "Rascunho salvo ✓" : "Salvar rascunho"}
@@ -354,6 +471,7 @@ export default function CandidaturaPage() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
             <div className="mt-6 text-center text-sm text-text-secondary">
               <p>Ao enviar, você concorda com nossos <Link href="/termos" className="text-gold hover:underline">Termos de Uso</Link> e <Link href="/privacidade" className="text-gold hover:underline">Política de Privacidade</Link>.</p>
