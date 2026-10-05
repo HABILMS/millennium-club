@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 const faqs = [
   {
@@ -34,6 +34,10 @@ const faqs = [
 export function FAQ() {
   const [openIndex, setOpenIndex] = React.useState<number | null>(0);
 
+  const toggleAccordion = (index: number) => {
+    setOpenIndex((prev) => (prev === index ? null : index));
+  };
+
   return (
     <section className="py-20 sm:py-28 lg:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -47,26 +51,38 @@ export function FAQ() {
         </div>
 
         <div className="max-w-3xl mx-auto space-y-4">
-          {faqs.map((faq, index) => (
-            <details
-              key={faq.question}
-              className="group glass rounded-xl border border-border overflow-hidden transition-all"
-              open={openIndex === index}
-              onToggle={() => setOpenIndex(openIndex === index ? null : index)}
-            >
-              <summary className="flex items-center justify-between p-6 cursor-pointer list-none">
-                <h3 className="font-display text-lg font-semibold text-white pr-10">
-                  {faq.question}
-                </h3>
-                <div className="absolute right-6 flex items-center">
-                  <ChevronDown className="h-5 w-5 text-gold transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
-                </div>
-              </summary>
-              <div className="px-6 pb-6 text-text-secondary animate-fade-in">
-                <p>{faq.answer}</p>
+          {faqs.map((faq, index) => {
+            const isOpen = openIndex === index;
+            return (
+              <div
+                key={faq.question}
+                className="glass rounded-xl border border-border overflow-hidden transition-all duration-200"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleAccordion(index)}
+                  className="w-full flex items-center justify-between p-6 text-left cursor-pointer transition-colors hover:bg-charcoal/40"
+                  aria-expanded={isOpen}
+                >
+                  <h3 className="font-display text-lg font-semibold text-white pr-6">
+                    {faq.question}
+                  </h3>
+                  <ChevronDown
+                    className={cn(
+                      "h-5 w-5 text-gold flex-shrink-0 transition-transform duration-300",
+                      isOpen && "rotate-180"
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+                {isOpen && (
+                  <div className="px-6 pb-6 text-text-secondary text-sm leading-relaxed border-t border-border/40 pt-4 animate-fade-in">
+                    <p>{faq.answer}</p>
+                  </div>
+                )}
               </div>
-            </details>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

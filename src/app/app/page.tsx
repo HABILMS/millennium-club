@@ -32,7 +32,7 @@ const activities = [
   { type: "message", title: "Nova mensagem", description: "Carlos Oliveira solicitou introdução", time: "4 dias atrás", icon: Mail, color: "silver" },
 ];
 
-import { Mail } from "lucide-react";
+import { Mail, Building2 } from "lucide-react";
 
 const nextActions = [
   { label: "Completar perfil da empresa", href: "/app/empresa", icon: Building2, priority: "high" },
@@ -41,25 +41,30 @@ const nextActions = [
   { label: "Revisar oportunidade Agrotech", href: "/app/oportunidades", icon: Briefcase, priority: "medium" },
 ];
 
-import { Building2 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const firstName = user?.user_metadata?.first_name || user?.email?.split('@')[0] || "Membro";
+
   return (
       <div className="space-y-6 animate-fade-up">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl sm:text-3xl font-semibold text-white">
-              Bem-vindo de volta, <span className="text-gold">João</span>
+              Bem-vindo de volta, <span className="text-gold">{firstName}</span>
             </h1>
             <p className="mt-1 text-silver">Aqui está o que está acontecendo na sua rede hoje</p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => window.location.href = "/app/oportunidades"}>
-              Ver oportunidades
-            </Button>
-            <Button variant="gold" onClick={() => window.location.href = "/app/perfil"}>
-              Completar perfil <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+            <Link href="/app/oportunidades">
+              <Button variant="outline">Ver oportunidades</Button>
+            </Link>
+            <Link href="/app/perfil">
+              <Button variant="gold">
+                Completar perfil <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
 

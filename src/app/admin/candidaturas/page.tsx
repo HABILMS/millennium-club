@@ -134,17 +134,87 @@ const getStatusConfig = (status: string) => {
 
 
 
+import { supabase } from "@/lib/supabase";
+
 export default function AdminCandidaturasPage() {
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [sortBy, setSortBy] = React.useState<"date" | "score" | "name">("date");
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [viewDetail, setViewDetail] = React.useState<string | null>(null);
+  const [appList, setAppList] = React.useState<any[]>(applications);
+  const [loading, setLoading] = React.useState(true);
+  const [currentPage, setCurrentPage] = React.useState(1);
 
-  const filteredApplications = applications
+  const ITEMS_PER_PAGE = 5;
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, sortBy]);
+
+  React.useEffect(() => {
+    async function loadApplications() {
+      try {
+        let dbRows: any[] = [];
+
+        // 1. Tentar buscar via API Server Route sem cache
+        const res = await fetch("/api/admin/candidaturas", { cache: "no-store" });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.applications && json.applications.length > 0) {
+            dbRows = json.applications;
+          }
+        }
+
+        // 2. Se a API não retornou, tentar via cliente Supabase
+        if (dbRows.length === 0) {
+          const { data } = await supabase
+            .from("applications")
+            .select("*")
+            .order("created_at", { ascending: false });
+          if (data && data.length > 0) {
+            dbRows = data;
+          }
+        }
+
+        if (dbRows.length > 0) {
+          const mapped = dbRows.map((item) => ({
+            id: item.code || item.id,
+            name: item.full_name || "Candidato sem nome",
+            email: item.email || "sem-email@exemplo.com",
+            role: item.primary_role || "entrepreneur",
+            company: item.company_name || "Não informada",
+            status: item.status || "submitted",
+            submittedAt: item.created_at || new Date().toISOString(),
+            score: item.score || 90,
+            referredBy: item.referred_by || "",
+            whatsapp: item.whatsapp || item.phone,
+            sectors: item.interest_sectors || item.sectors,
+            isLiveDB: true,
+          }));
+
+          // Concatena cadastros reais do banco no topo com a lista mock para exibição completa
+          setAppList([...mapped, ...applications.filter((a) => !mapped.some((m) => m.id === a.id))]);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar candidaturas do Supabase:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadApplications();
+  }, []);
+
+  const filteredApplications = appList
     .filter((app) => {
       if (statusFilter !== "all" && app.status !== statusFilter) return false;
-      if (search && !app.name.toLowerCase().includes(search.toLowerCase()) && !app.email.toLowerCase().includes(search.toLowerCase()) && !app.company.toLowerCase().includes(search.toLowerCase())) return false;
+      if (
+        search &&
+        !app.name.toLowerCase().includes(search.toLowerCase()) &&
+        !app.email.toLowerCase().includes(search.toLowerCase()) &&
+        !app.company.toLowerCase().includes(search.toLowerCase())
+      )
+        return false;
       return true;
     })
     .sort((a, b) => {
@@ -153,7 +223,20 @@ export default function AdminCandidaturasPage() {
       return a.name.localeCompare(b.name);
     });
 
-  const formatDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const totalPages = Math.ceil(filteredApplications.length / ITEMS_PER_PAGE) || 1;
+  const paginatedApplications = filteredApplications.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -225,7 +308,7 @@ export default function AdminCandidaturasPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filteredApplications.map((app) => {
+                  {paginatedApplications.map((app) => {
                     const statusConfig = getStatusConfig(app.status);
                     const StatusIcon = statusConfig.icon;
 
@@ -246,10 +329,17 @@ export default function AdminCandidaturasPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="h-9 w-9 rounded-xl bg-gold/10 flex items-center justify-center text-gold font-semibold text-sm">
-                              {app.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                              {app.name ? app.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2) : "MC"}
                             </div>
                             <div>
-                              <p className="font-medium text-white">{app.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-medium text-white">{app.name}</p>
+                                {app.isLiveDB && (
+                                  <span className="text-[10px] bg-emerald/20 text-emerald border border-emerald/40 px-1.5 py-0.5 rounded-full font-bold">
+                                    🟢 Novo Cadastro DB
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-sm text-text-secondary">{app.email}</p>
                             </div>
                           </div>
@@ -298,11 +388,33 @@ export default function AdminCandidaturasPage() {
           </CardContent>
         </Card>
 
-        <div className="flex items-center justify-between text-sm text-text-secondary">
-          <span>Mostrando {filteredApplications.length} de {applications.length} candidaturas</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>Anterior</Button>
-            <Button variant="outline" size="sm" disabled>Próxima</Button>
+        {/* Barra de Navegação Paginada (5 itens por página) */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 glass rounded-xl border border-border">
+          <span className="text-xs text-silver">
+            Mostrando <strong className="text-white">{filteredApplications.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0}</strong> a{" "}
+            <strong className="text-white">{Math.min(currentPage * ITEMS_PER_PAGE, filteredApplications.length)}</strong> de{" "}
+            <strong className="text-gold">{filteredApplications.length}</strong> candidaturas (Página {currentPage} de {totalPages})
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-xs font-semibold text-gold px-3 py-1 bg-charcoal rounded-lg border border-gold/30">
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+            >
+              Próxima
+            </Button>
           </div>
         </div>
 

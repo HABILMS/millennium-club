@@ -8,114 +8,37 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { cn } from "@/lib/utils";
-import { ChevronRight, CheckCircle, Loader2 } from "lucide-react";
+import { ChevronRight, CheckCircle, Sparkles, ShieldCheck, ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-interface FormField {
-  name: string;
-  label: string;
-  type: "text" | "email" | "tel" | "url" | "number" | "select" | "textarea" | "checkbox";
-  required?: boolean;
-  placeholder?: string;
-  defaultValue?: string;
-  options?: { value: string; label: string }[];
-  rows?: number;
-}
+export const dynamic = "force-dynamic";
 
-const steps = [
-  { number: 1, title: "Informações básicas", href: "#" },
-  { number: 2, title: "Perfil profissional", href: "#" },
-  { number: 3, title: "Negócios e investimento", href: "#" },
-  { number: 4, title: "Contribuição e consentimento", href: "#" },
+const opportunityCategories = [
+  { id: "automoveis", label: "Automóveis & Frota Executiva", icon: "🚗" },
+  { id: "aeronaves", label: "Aeronaves & Aviação Executiva", icon: "✈️" },
+  { id: "usinas_rsu", label: "Usinas de RSU (Resíduos Sólidos)", icon: "♻️" },
+  { id: "credito_carbono", label: "Crédito de Carbono (Compra / Venda)", icon: "🌿" },
+  { id: "usina_solar", label: "Venda de Usina Solar", icon: "☀️" },
+  { id: "credito_solar", label: "Venda de Crédito de Usina Solar", icon: "⚡" },
+  { id: "passivo_solar", label: "Venda de Passivo de Energia Solar", icon: "🔋" },
+  { id: "venda_hoteis", label: "Venda de Redes de Hotéis", icon: "🏨" },
+  { id: "compra_hoteis", label: "Compra de Redes de Hotéis", icon: "🏢" },
+  { id: "socio_projetos", label: "Sócio para Projetos (Co-investimento / M&A)", icon: "🤝" },
 ];
-
-const stepFields: Record<number, FormField[]> = {
-  1: [
-    { name: "fullName", label: "Nome completo", type: "text", required: true, placeholder: "João da Silva" },
-    { name: "email", label: "E-mail profissional", type: "email", required: true, placeholder: "joao@empresa.com.br" },
-    { name: "phone", label: "Telefone", type: "tel", placeholder: "(11) 99999-9999" },
-    { name: "whatsapp", label: "WhatsApp", type: "tel", placeholder: "(11) 99999-9999" },
-    { name: "jobTitle", label: "Cargo", type: "text", placeholder: "CEO / Fundador" },
-    { name: "company", label: "Empresa", type: "text", placeholder: "Nome da empresa" },
-    { name: "country", label: "País", type: "text", defaultValue: "Brasil" },
-    { name: "state", label: "Estado", type: "text", placeholder: "SP" },
-    { name: "city", label: "Cidade", type: "text", placeholder: "São Paulo" },
-    { name: "linkedin", label: "LinkedIn", type: "url", placeholder: "https://linkedin.com/in/joaodasilva" },
-    { name: "website", label: "Site pessoal/empresa", type: "url", placeholder: "https://empresa.com.br" },
-    { name: "languages", label: "Idiomas", type: "text", placeholder: "Português, Inglês, Espanhol" },
-    { name: "timezone", label: "Fuso horário", type: "text", defaultValue: "America/Sao_Paulo" },
-  ],
-  2: [
-    { name: "primaryRole", label: "Papel principal", type: "select", required: true, options: [
-      { value: "", label: "Selecione" },
-      { value: "entrepreneur", label: "Empresário" },
-      { value: "investor", label: "Investidor" },
-      { value: "consultant", label: "Consultor" },
-      { value: "specialist", label: "Especialista técnico" },
-      { value: "originator", label: "Originador de negócios" },
-      { value: "representative", label: "Representante comercial" },
-      { value: "institutional_partner", label: "Parceiro institucional" },
-      { value: "service_provider", label: "Prestador de serviços" },
-    ]},
-    { name: "additionalRoles", label: "Papéis adicionais", type: "text", placeholder: "Ex: investor, consultant" },
-    { name: "sectors", label: "Setor e subsetores", type: "text", placeholder: "Tecnologia, SaaS, FinTech" },
-    { name: "executiveBio", label: "Biografia executiva", type: "textarea", rows: 4, placeholder: "Resumo da sua trajetória profissional..." },
-    { name: "professionalHistory", label: "Histórico profissional", type: "textarea", rows: 4, placeholder: "Principais empresas, cargos e períodos..." },
-    { name: "competencies", label: "Competências", type: "text", placeholder: "Estratégia, M&A, Captação, Gestão" },
-    { name: "keyResults", label: "Principais resultados", type: "textarea", rows: 3, placeholder: "Ex: Liderou captação de R$ 50M, Exit de startup..." },
-    { name: "references", label: "Referências profissionais", type: "textarea", rows: 3, placeholder: "Nome, cargo, empresa, contato, relação" },
-  ],
-  3: [
-    { name: "networkObjective", label: "Objetivo na rede", type: "textarea", rows: 3, required: true, placeholder: "O que você busca ao entrar no Millennium Club?" },
-    { name: "interestSectors", label: "Setores de interesse", type: "text", placeholder: "Agro, Logística, Saúde, Energia, Imobiliário, Tech" },
-    { name: "interestRegions", label: "Regiões de interesse", type: "text", placeholder: "Brasil, América Latina, EUA, Europa" },
-    { name: "minTicket", label: "Ticket mínimo (R$)", type: "number", placeholder: "1000000" },
-    { name: "maxTicket", label: "Ticket máximo (R$)", type: "number", placeholder: "50000000" },
-    { name: "revenueBracket", label: "Faturamento anual por faixa", type: "select", options: [
-      { value: "", label: "Selecione" },
-      { value: "ate_5m", label: "Até R$ 5 milhões" },
-      { value: "5m_20m", label: "R$ 5M a R$ 20M" },
-      { value: "20m_100m", label: "R$ 20M a R$ 100M" },
-      { value: "100m_500m", label: "R$ 100M a R$ 500M" },
-      { value: "acima_500m", label: "Acima de R$ 500M" },
-    ]},
-    { name: "businessStages", label: "Estágio dos negócios de interesse", type: "text", placeholder: "Early stage, Growth, M&A, Sucessão" },
-    { name: "preferredModels", label: "Modelos de negócio preferidos", type: "text", placeholder: "B2B SaaS, Marketplace, Indústria, Serviços" },
-    { name: "participationInterests", label: "Interesse em participar como", type: "text", placeholder: "Investir, Captar, Representar, Indicar, Consultoria" },
-  ],
-  4: [
-    { name: "contribution", label: "Como poderá contribuir", type: "textarea", rows: 3, required: true, placeholder: "Network, capital, expertise, originação, mentoria..." },
-    { name: "committeeInterests", label: "Comitês de interesse", type: "text", placeholder: "Agro, Infra, Saúde, Tech, Finanças, Internacional" },
-    { name: "referredBy", label: "Indicação de membro existente (opcional)", type: "text", placeholder: "Nome do membro que o indicou" },
-    { name: "signupSource", label: "Origem do cadastro", type: "select", required: true, options: [
-      { value: "", label: "Como conheceu o Millennium Club?" },
-      { value: "indication", label: "Indicação de membro" },
-      { value: "event", label: "Evento" },
-      { value: "linkedin", label: "LinkedIn" },
-      { value: "press", label: "Imprensa/Artigo" },
-      { value: "search", label: "Busca orgânica" },
-      { value: "other", label: "Outro" },
-    ]},
-    { name: "privacyPolicy", label: "Aceito a Política de Privacidade", type: "checkbox", required: true },
-    { name: "marketingConsent", label: "Autorizo contato para comunicações", type: "checkbox" },
-    { name: "truthfulness", label: "Confirmo a veracidade das informações", type: "checkbox", required: true },
-  ],
-};
 
 export default function CandidaturaPage() {
   const [currentStep, setCurrentStep] = React.useState(1);
-  const [formData, setFormData] = React.useState<Record<string, unknown>>({});
+  const [formData, setFormData] = React.useState<Record<string, any>>({
+    country: "Brasil",
+    timezone: "America/Sao_Paulo",
+    signupSource: "linkedin",
+    selectedCategories: [],
+  });
+  const [showOptionalDetails, setShowOptionalDetails] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [saved, setSaved] = React.useState(false);
   const [submittedCode, setSubmittedCode] = React.useState<string | null>(null);
   const [submitError, setSubmitError] = React.useState("");
-
-  const handleChange = (name: string, value: unknown) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setSaved(false);
-    if (submitError) setSubmitError("");
-  };
 
   const formRef = React.useRef<HTMLDivElement>(null);
 
@@ -123,359 +46,378 @@ export default function CandidaturaPage() {
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const handleChange = (name: string, value: any) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (submitError) setSubmitError("");
+  };
+
+  const toggleCategory = (catId: string) => {
+    const current: string[] = formData.selectedCategories || [];
+    const updated = current.includes(catId)
+      ? current.filter((id) => id !== catId)
+      : [...current, catId];
+    handleChange("selectedCategories", updated);
+  };
+
   const handleNext = () => {
-    const fields = stepFields[currentStep as keyof typeof stepFields];
-    const requiredFields = fields.filter(f => f.required);
-    const isValid = requiredFields.every(f => {
-      const value = formData[f.name];
-      if (f.type === "checkbox") return value === true;
-      return value && String(value).trim() !== "";
-    });
-
-    if (!isValid) {
-      alert("Por favor, preencha todos os campos obrigatórios.");
-      return;
-    }
-
-    if (currentStep < 4) {
-      setCurrentStep(prev => prev + 1);
+    if (currentStep === 1) {
+      if (!formData.fullName?.trim() || !formData.email?.trim() || !formData.whatsapp?.trim() || !formData.primaryRole) {
+        setSubmitError("Por favor, preencha os campos essenciais com asterisco (*).");
+        return;
+      }
+      setSubmitError("");
+      setCurrentStep(2);
       setTimeout(scrollToFormTop, 100);
     }
   };
 
   const handleBack = () => {
     if (currentStep > 1) {
-      setCurrentStep(prev => prev - 1);
+      setCurrentStep(1);
       setTimeout(scrollToFormTop, 100);
     }
   };
 
-  const handleSaveDraft = () => {
-    localStorage.setItem("millennium_candidatura_draft", JSON.stringify({
-      step: currentStep,
-      data: formData,
-      savedAt: new Date().toISOString(),
-    }));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
-
   const handleSubmit = async () => {
-    const fields = stepFields[4];
-    const requiredFields = fields.filter(f => f.required);
-    const isValid = requiredFields.every(f => {
-      const value = formData[f.name];
-      if (f.type === "checkbox") return value === true;
-      return value && String(value).trim() !== "";
-    });
-
-    if (!isValid) {
-      setSubmitError("Por favor, preencha os campos obrigatórios e aceite os termos antes de enviar.");
+    if (!formData.privacyPolicy || !formData.truthfulness) {
+      setSubmitError("Você precisa aceitar os termos de privacidade e confirmar a veracidade das informações.");
       return;
     }
 
     setIsSubmitting(true);
     setSubmitError("");
 
-    // Código de protocolo amigável (coluna `code` é unique no banco).
     const code = `MC-${Date.now().toString(36).toUpperCase()}${Math.random()
       .toString(36)
       .slice(2, 6)
       .toUpperCase()}`;
 
-    const num = (v: unknown) => {
-      const raw = String(v ?? "").trim();
-      if (raw === "") return null;
-      const n = Number(raw.replace(/\./g, "").replace(",", "."));
-      return Number.isFinite(n) ? n : null;
-    };
-    const txt = (v: unknown) => {
+    const txt = (v: any) => {
       const s = String(v ?? "").trim();
       return s === "" ? null : s;
     };
 
-    // Mapeia os campos do formulário para as colunas da tabela `applications`.
+    const categoriesStr = (formData.selectedCategories || [])
+      .map((catId: string) => opportunityCategories.find((c) => c.id === catId)?.label || catId)
+      .join(", ");
+
     const payload = {
       code,
-      // etapa 1
       full_name: txt(formData.fullName),
       email: txt(formData.email)?.toLowerCase(),
-      phone: txt(formData.phone),
+      phone: txt(formData.whatsapp),
       whatsapp: txt(formData.whatsapp),
-      job_title: txt(formData.jobTitle),
-      company_name: txt(formData.company),
+      job_title: txt(formData.jobTitle) ?? "Executivo / Sócio",
+      company_name: txt(formData.company) ?? "Não informado",
       country: txt(formData.country) ?? "Brasil",
       state: txt(formData.state),
       city: txt(formData.city),
       linkedin: txt(formData.linkedin),
-      website: txt(formData.website),
-      languages: txt(formData.languages),
-      timezone: txt(formData.timezone) ?? "America/Sao_Paulo",
-      // etapa 2 (primary_role usa os mesmos valores do enum no banco)
-      primary_role: txt(formData.primaryRole),
-      additional_roles: txt(formData.additionalRoles),
-      sectors: txt(formData.sectors),
+      primary_role: txt(formData.primaryRole) ?? "entrepreneur",
+      interest_sectors: categoriesStr || txt(formData.interestSectors),
+      network_objective: txt(formData.networkObjective) ?? "Prospecção e originação de negócios executivos",
       executive_bio: txt(formData.executiveBio),
-      professional_history: txt(formData.professionalHistory),
-      competencies: txt(formData.competencies),
-      key_results: txt(formData.keyResults),
-      professional_references: txt(formData.references),
-      // etapa 3
-      network_objective: txt(formData.networkObjective),
-      interest_sectors: txt(formData.interestSectors),
-      interest_regions: txt(formData.interestRegions),
-      min_ticket: num(formData.minTicket),
-      max_ticket: num(formData.maxTicket),
-      revenue_bracket: txt(formData.revenueBracket),
-      business_stages: txt(formData.businessStages),
-      preferred_models: txt(formData.preferredModels),
-      participation_interests: txt(formData.participationInterests),
-      // etapa 4
-      contribution: txt(formData.contribution),
-      committee_interests: txt(formData.committeeInterests),
+      contribution: txt(formData.contribution) ?? "Conexões estratégicas e originação",
       referred_by: txt(formData.referredBy),
-      signup_source: txt(formData.signupSource),
+      signup_source: txt(formData.signupSource) ?? "linkedin",
       privacy_policy_accepted: formData.privacyPolicy === true,
       marketing_consent: formData.marketingConsent === true,
       truthfulness_confirmed: formData.truthfulness === true,
+      status: "submitted",
     };
 
-    const { error: insertError } = await supabase
-      .from("applications")
-      .insert(payload);
+    const { error: insertError } = await supabase.from("applications").insert(payload);
 
     if (insertError) {
-      console.error("[candidatura] erro ao salvar:", insertError);
-      setSubmitError(
-        "Não foi possível enviar sua candidatura agora. Tente novamente em alguns instantes — se o problema persistir, fale conosco pela página de contato."
-      );
+      console.error("[candidatura] erro:", insertError);
+      setSubmitError("Falha ao salvar candidatura. Verifique os dados e tente novamente.");
       setIsSubmitting(false);
       return;
     }
 
-    localStorage.removeItem("millennium_candidatura_draft");
     setSubmittedCode(code);
     setIsSubmitting(false);
-    setFormData({});
-    setCurrentStep(1);
-    scrollToFormTop();
   };
-
-  React.useEffect(() => {
-    const draft = localStorage.getItem("millennium_candidatura_draft");
-    if (draft) {
-      try {
-        const parsed = JSON.parse(draft);
-        if (parsed.data) {
-          setFormData(parsed.data);
-          setCurrentStep(parsed.step || 1);
-        }
-      } catch {}
-    }
-  }, []);
-
-  const progress = (currentStep / 4) * 100;
 
   return (
     <>
       <Header />
-      <main id="main-content" className="flex-1 pt-16">
-        <section className="py-12 bg-charcoal/30">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="hidden md:flex items-center justify-between mb-8">
-              <div className="flex items-center gap-4">
-                {steps.map((step, index) => (
-                  <React.Fragment key={step.number}>
-                    <div className={cn(
-                      "flex items-center gap-2",
-                      index < currentStep - 1 ? "text-gold" : index === currentStep - 1 ? "text-white" : "text-text-secondary"
-                    )}>
-                      <div className={cn(
-                        "h-8 w-8 rounded-full flex items-center justify-center font-semibold text-sm",
-                        index < currentStep - 1 ? "bg-gold text-obsidian" : index === currentStep - 1 ? "bg-gold text-obsidian" : "bg-charcoal border border-border text-silver"
-                      )}>
-                        {index < currentStep - 1 ? <CheckCircle className="h-4 w-4" /> : step.number}
-                      </div>
-                      <span className="font-medium hidden sm:block">{step.title}</span>
-                    </div>
-                    {index < steps.length - 1 && (
-                      <div className={cn(
-                        "h-0.5 w-20",
-                        index < currentStep - 1 ? "bg-gold" : "bg-border"
-                      )} />
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
+      <main id="main-content" className="flex-1 pt-16 bg-obsidian text-white min-h-screen">
+        <section className="py-10 bg-charcoal/30 border-b border-border">
+          <div className="mx-auto max-w-4xl px-4 text-center">
+            <Badge variant="gold" size="sm" className="mb-3">
+              <Sparkles className="h-3.5 w-3.5 mr-1" /> Cadastro de Parceiro Acelerado
+            </Badge>
+            <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">
+              Faça parte do <span className="text-gold">Millennium Club</span>
+            </h1>
+            <p className="mt-2 text-silver text-sm sm:text-base max-w-xl mx-auto">
+              Preenchimento rápido em menos de 60 segundos. Conecte-se a originação de ativos exclusivos e M&A.
+            </p>
 
-            <div className="md:hidden mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-silver">Progresso</span>
-                <span className="text-sm font-semibold text-gold">{Math.round(progress)}%</span>
+            <div className="mt-6 flex items-center justify-center gap-3 max-w-md mx-auto">
+              <div className="flex-1 flex items-center gap-2">
+                <div className={cn("h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold", currentStep >= 1 ? "bg-gold text-obsidian" : "bg-charcoal text-silver border border-border")}>
+                  1
+                </div>
+                <span className={cn("text-xs font-medium", currentStep >= 1 ? "text-white" : "text-text-secondary")}>Identificação</span>
               </div>
-              <div className="h-2 bg-charcoal rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gold transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
+              <div className={cn("h-0.5 flex-1", currentStep === 2 ? "bg-gold" : "bg-border")} />
+              <div className="flex-1 flex items-center gap-2">
+                <div className={cn("h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold", currentStep === 2 ? "bg-gold text-obsidian" : "bg-charcoal text-silver border border-border")}>
+                  2
+                </div>
+                <span className={cn("text-xs font-medium", currentStep === 2 ? "text-white" : "text-text-secondary")}>Interesses & Envio</span>
               </div>
-              <p className="text-xs text-text-secondary mt-1 text-center">
-                Etapa {currentStep} de 4: {steps[currentStep - 1].title}
-              </p>
             </div>
           </div>
         </section>
 
         <section className="py-12">
-          <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-2xl px-4" ref={formRef}>
             {submittedCode ? (
-              <Card className="glass border-emerald/30">
-                <CardContent className="p-8 sm:p-10 text-center space-y-5">
-                  <div className="h-16 w-16 rounded-full bg-emerald/10 flex items-center justify-center text-emerald mx-auto">
-                    <CheckCircle className="h-8 w-8" />
-                  </div>
-                  <h2 className="font-display text-2xl font-semibold text-white">Candidatura enviada!</h2>
-                  <p className="text-silver">
-                    Recebemos sua candidatura. Nossa equipe fará a análise e entrará em contato em até 5 dias úteis pelo e-mail informado.
-                  </p>
-                  <div className="inline-block rounded-xl border border-border bg-charcoal/50 px-8 py-4">
-                    <p className="text-xs uppercase tracking-wider text-text-secondary">Protocolo</p>
-                    <p className="font-display text-xl text-gold mt-1">{submittedCode}</p>
-                  </div>
-                  <div>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setSubmittedCode(null);
-                        setFormData({});
-                        setCurrentStep(1);
-                        scrollToFormTop();
-                      }}
-                    >
-                      Enviar nova candidatura
-                    </Button>
-                  </div>
-                </CardContent>
+              <Card className="glass border-emerald/40 text-center p-8 sm:p-10 space-y-6 animate-fade-up">
+                <div className="h-16 w-16 rounded-full bg-emerald/10 flex items-center justify-center text-emerald mx-auto border border-emerald/30">
+                  <CheckCircle className="h-8 w-8" />
+                </div>
+                <h2 className="font-display text-2xl font-bold">Candidatura Recebida com Sucesso!</h2>
+                <p className="text-silver text-sm">
+                  Sua solicitação foi enviada para o comitê de admissão. Em breve entraremos em contato via WhatsApp/E-mail.
+                </p>
+                <div className="p-4 rounded-xl bg-charcoal/80 border border-border inline-block min-w-[240px]">
+                  <span className="text-xs uppercase tracking-wider text-text-secondary">Código de Protocolo</span>
+                  <p className="font-display text-xl font-semibold text-gold mt-1">{submittedCode}</p>
+                </div>
+                <div>
+                  <Button variant="gold" onClick={() => (window.location.href = "/")}>
+                    Voltar ao Início
+                  </Button>
+                </div>
               </Card>
             ) : (
-            <Card className="glass">
-              <CardHeader className="border-b border-border">
-                <CardTitle>Etapa {currentStep} de 4: {steps[currentStep - 1].title}</CardTitle>
-                <CardDescription>
-                  {currentStep === 1 && "Dados pessoais e de contato para identificação"}
-                  {currentStep === 2 && "Sua trajetória, competências e como você atua no mercado"}
-                  {currentStep === 3 && "Seus interesses de investimento, setores e tickets"}
-                  {currentStep === 4 && "Como você agrega valor à rede e consentimentos legais"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6" ref={formRef} data-testid="form-content">
-                {stepFields[currentStep as keyof typeof stepFields].map((field) => (
-                  <div key={field.name}>
-                    {field.type === "select" && (
+              <Card className="glass border-gold/20 shadow-2xl">
+                <CardHeader className="border-b border-border">
+                  <CardTitle className="text-xl text-white">
+                    {currentStep === 1 ? "Passo 1: Seus Dados Essenciais" : "Passo 2: Áreas de Originação de Interesse"}
+                  </CardTitle>
+                  <CardDescription className="text-silver text-xs">
+                    {currentStep === 1
+                      ? "Informe seus contatos para validação do perfil executivo."
+                      : "Selecione em quais tipos de negócios ou ativos você deseja atuar/investir."}
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="p-6 space-y-5">
+                  {currentStep === 1 && (
+                    <div className="space-y-4">
+                      <Input
+                        label="Nome Completo *"
+                        placeholder="Ex: Roberto Almeida"
+                        value={formData.fullName || ""}
+                        onChange={(e) => handleChange("fullName", e.target.value)}
+                        required
+                      />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input
+                          label="E-mail Profissional *"
+                          type="email"
+                          placeholder="roberto@empresa.com.br"
+                          value={formData.email || ""}
+                          onChange={(e) => handleChange("email", e.target.value)}
+                          required
+                        />
+                        <Input
+                          label="WhatsApp / Celular *"
+                          type="tel"
+                          placeholder="(11) 99999-8888"
+                          value={formData.whatsapp || ""}
+                          onChange={(e) => handleChange("whatsapp", e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input
+                          label="Empresa Principal"
+                          placeholder="Nome da sua empresa"
+                          value={formData.company || ""}
+                          onChange={(e) => handleChange("company", e.target.value)}
+                        />
+                        <Input
+                          label="Seu Cargo / Atuação"
+                          placeholder="Ex: CEO, Diretor, Investor"
+                          value={formData.jobTitle || ""}
+                          onChange={(e) => handleChange("jobTitle", e.target.value)}
+                        />
+                      </div>
+
                       <div>
-                        <label className="block text-sm font-medium text-silver mb-2">
-                          {field.label}
-                          {field.required && <span className="text-alert ml-1" aria-hidden="true">*</span>}
+                        <label className="block text-sm font-medium text-silver mb-1.5">
+                          Papel Principal na Rede *
                         </label>
                         <select
-                          value={String(formData[field.name] || "")}
-                          onChange={(e) => handleChange(field.name, e.target.value)}
-                          className={cn(
-                            "w-full bg-charcoal border border-border text-white placeholder-text-secondary rounded-xl",
-                            "focus:border-gold focus:ring-2 focus:ring-gold/20 focus:outline-none",
-                            "py-3.5 px-5 text-base"
-                          )}
-                          required={field.required}
+                          className="w-full bg-charcoal border border-border text-white rounded-xl py-3 px-4 text-sm focus:border-gold focus:outline-none"
+                          value={formData.primaryRole || ""}
+                          onChange={(e) => handleChange("primaryRole", e.target.value)}
                         >
-                          {field.options?.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
+                          <option value="">Selecione sua atuação principal...</option>
+                          <option value="entrepreneur">Empresário / Fundador</option>
+                          <option value="investor">Investidor / Family Office</option>
+                          <option value="originator">Originador de Negócios / M&A</option>
+                          <option value="consultant">Consultor / Especialista</option>
+                          <option value="representative">Representante Comercial</option>
+                          <option value="institutional_partner">Parceiro Institucional</option>
                         </select>
                       </div>
-                    )}
-                    {field.type === "textarea" && (
-                      <div>
-                        <label className="block text-sm font-medium text-silver mb-2">
-                          {field.label}
-                          {field.required && <span className="text-alert ml-1" aria-hidden="true">*</span>}
-                        </label>
-                        <textarea
-                          value={String(formData[field.name] || "")}
-                          onChange={(e) => handleChange(field.name, e.target.value)}
-                          rows={field.rows || 3}
-                          className={cn(
-                            "w-full bg-charcoal border border-border text-white placeholder-text-secondary rounded-xl",
-                            "focus:border-gold focus:ring-2 focus:ring-gold/20 focus:outline-none",
-                            "py-3.5 px-5 text-base resize-y min-h-[100px]"
-                          )}
-                          required={field.required}
-                          placeholder={field.placeholder}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input
+                          label="Cidade / Estado"
+                          placeholder="Ex: São Paulo - SP"
+                          value={formData.city || ""}
+                          onChange={(e) => handleChange("city", e.target.value)}
+                        />
+                        <Input
+                          label="Perfil do LinkedIn (opcional)"
+                          placeholder="https://linkedin.com/in/perfil"
+                          value={formData.linkedin || ""}
+                          onChange={(e) => handleChange("linkedin", e.target.value)}
                         />
                       </div>
-                    )}
-                    {field.type === "checkbox" && (
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(formData[field.name])}
-                          onChange={(e) => handleChange(field.name, e.target.checked)}
-                          className="mt-1 h-4 w-4 rounded border-border bg-charcoal text-gold focus:ring-gold focus:ring-2"
-                          required={field.required}
-                        />
-                        <span className="text-sm text-silver">{field.label}</span>
-                      </label>
-                    )}
-                    {field.type !== "select" && field.type !== "textarea" && field.type !== "checkbox" && (
-                      <Input
-                        name={field.name}
-                        label={field.label}
-                        type={field.type}
-                        placeholder={field.placeholder}
-                        value={String(formData[field.name] || "")}
-                        onChange={(e) => handleChange(field.name, e.target.value)}
-                        required={field.required}
-                      />
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  )}
 
-                {submitError && (
-                  <div className="bg-alert/10 border border-alert/30 text-alert rounded-xl p-4 text-sm" role="alert">
-                    {submitError}
-                  </div>
-                )}
+                  {currentStep === 2 && (
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-semibold text-white mb-2">
+                          Selecione os segmentos de oportunidades de seu interesse:
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {opportunityCategories.map((cat) => {
+                            const isSelected = (formData.selectedCategories || []).includes(cat.id);
+                            return (
+                              <button
+                                type="button"
+                                key={cat.id}
+                                onClick={() => toggleCategory(cat.id)}
+                                className={cn(
+                                  "flex items-center gap-2.5 p-3 rounded-xl border text-left text-xs transition-all",
+                                  isSelected
+                                    ? "bg-gold/15 border-gold text-white font-medium shadow-md"
+                                    : "bg-charcoal/50 border-border text-silver hover:bg-charcoal hover:border-gold/30"
+                                )}
+                              >
+                                <span className="text-base">{cat.icon}</span>
+                                <span className="flex-1 truncate">{cat.label}</span>
+                                {isSelected && <CheckCircle className="h-4 w-4 text-gold flex-shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-border">
-                  <Button variant="secondary" onClick={handleSaveDraft} disabled={isSubmitting}>
-                    {saved ? "Rascunho salvo ✓" : "Salvar rascunho"}
-                  </Button>
-                  <div className="flex gap-3 w-full sm:w-auto">
-                    {currentStep > 1 && (
+                      {/* Informações Opcionais Retráteis */}
+                      <div className="border border-border rounded-xl bg-charcoal/30 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setShowOptionalDetails(!showOptionalDetails)}
+                          className="w-full p-3.5 flex items-center justify-between text-xs font-medium text-silver hover:text-white transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-gold" /> Adicionar informações adicionais (Opcional)
+                          </span>
+                          {showOptionalDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
+
+                        {showOptionalDetails && (
+                          <div className="p-4 border-t border-border space-y-3 bg-obsidian/50">
+                            <Input
+                              label="Como conheceu o Millennium Club?"
+                              placeholder="Ex: Indicação, Evento, LinkedIn..."
+                              value={formData.signupSource || ""}
+                              onChange={(e) => handleChange("signupSource", e.target.value)}
+                            />
+                            <div>
+                              <label className="block text-xs font-medium text-silver mb-1">
+                                Breve histórico executivo / Biografia
+                              </label>
+                              <textarea
+                                className="w-full bg-charcoal border border-border text-white rounded-xl p-3 text-xs focus:border-gold focus:outline-none min-h-[70px]"
+                                placeholder="Resumo de investimentos realizados, empresas fundadas..."
+                                value={formData.executiveBio || ""}
+                                onChange={(e) => handleChange("executiveBio", e.target.value)}
+                              />
+                            </div>
+                            <Input
+                              label="Indicação de Membro (se houver)"
+                              placeholder="Nome do membro recomendante"
+                              value={formData.referredBy || ""}
+                              onChange={(e) => handleChange("referredBy", e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Consentimento Legal */}
+                      <div className="space-y-3 pt-2">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(formData.privacyPolicy)}
+                            onChange={(e) => handleChange("privacyPolicy", e.target.checked)}
+                            className="mt-1 h-4 w-4 rounded border-border bg-charcoal text-gold focus:ring-gold"
+                          />
+                          <span className="text-xs text-silver">
+                            Aceito a <Link href="/privacidade" className="text-gold underline">Política de Privacidade</Link> e o tratamento confidencial de meus dados. *
+                          </span>
+                        </label>
+
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(formData.truthfulness)}
+                            onChange={(e) => handleChange("truthfulness", e.target.checked)}
+                            className="mt-1 h-4 w-4 rounded border-border bg-charcoal text-gold focus:ring-gold"
+                          />
+                          <span className="text-xs text-silver">
+                            Declaro a veracidade de todas as informações fornecidas. *
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {submitError && (
+                    <div className="bg-alert/10 border border-alert/30 text-alert text-xs p-3 rounded-xl flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                      <span>{submitError}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-4 border-t border-border">
+                    {currentStep > 1 ? (
                       <Button variant="outline" onClick={handleBack} disabled={isSubmitting}>
                         Voltar
                       </Button>
+                    ) : (
+                      <div />
                     )}
-                    {currentStep < 4 ? (
-                      <Button variant="gold" onClick={handleNext} disabled={isSubmitting}>
-                        Próxima
-                        <ChevronRight className="h-4 w-4" />
+
+                    {currentStep === 1 ? (
+                      <Button variant="gold" onClick={handleNext}>
+                        Avançar para Interesses <ChevronRight className="h-4 w-4 ml-1" />
                       </Button>
                     ) : (
                       <Button variant="gold" size="lg" onClick={handleSubmit} loading={isSubmitting} disabled={isSubmitting}>
-                        Enviar candidatura
-                        <Loader2 className="h-4 w-4" />
+                        Finalizar Candidatura
                       </Button>
                     )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
             )}
-
-            <div className="mt-6 text-center text-sm text-text-secondary">
-              <p>Ao enviar, você concorda com nossos <Link href="/termos" className="text-gold hover:underline">Termos de Uso</Link> e <Link href="/privacidade" className="text-gold hover:underline">Política de Privacidade</Link>.</p>
-            </div>
           </div>
         </section>
       </main>

@@ -508,107 +508,118 @@ create policy audit_logs_admin_write on public.audit_logs
 -- Agrega os indicadores exibidos em /admin em uma única chamada.
 create or replace function public.dashboard_kpis()
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-with
-  applications_waiting as (
-    select count(*)::int as total
-    from public.applications
-    where status in ('submitted', 'under_review', 'compliance_review')
-  ),
-  interviews_scheduled as (
-    select count(*)::int as total
-    from public.application_interviews
-    where status = 'scheduled' and scheduled_at >= now()
-  ),
-  approved_this_month as (
-    select count(*)::int as total
-    from public.applications
-    where status in ('approved', 'converted')
-      and coalesce(decided_at, updated_at) >= date_trunc('month', now())
-  ),
-  members_active as (
-    select count(*)::int as total from public.members where status = 'active'
-  ),
-  members_paying as (
-    select count(distinct s.member_id)::int as total
-    from public.subscriptions s
-    join public.members m on m.id = s.member_id
-    where s.status in ('active', 'trialing') and m.status = 'active'
-  ),
-  opportunities_open as (
-    select
-      count(*)::int as total,
-      coalesce(sum(requested_volume) filter (where stage = 'active'), 0)::numeric as volume_active,
-      coalesce(sum(requested_volume) filter (where stage = 'negotiation'), 0)::numeric as volume_negotiation
-    from public.opportunities
-    where stage in ('active', 'negotiation')
-  ),
-  subscription_revenue as (
-    select coalesce(sum(price_cents), 0)::bigint as cents
-    from public.subscriptions
-    where status in ('active', 'trialing')
-  ),
-  remunerations_open as (
-    select
-      coalesce(sum(amount) filter (where status in ('pending', 'approved')), 0)::numeric as forecast,
-      coalesce(sum(amount) filter (where status = 'approved'), 0)::numeric as payable
-    from public.remunerations
-  ),
-  docs_pending_late as (
-    select count(*)::int as total
-    from public.application_documents d
-    join public.applications a on a.id = d.application_id
-    where d.status = 'pending'
-      and d.created_at < now() - interval '7 days'
-      and a.status not in ('approved', 'rejected', 'converted')
-  ),
-  renewals_soon as (
-    select count(*)::int as total
-    from public.subscriptions
-    where status in ('active', 'trialing')
-      and current_period_end is not null
-      and current_period_end between now() and now() + interval '7 days'
-  ),
-  remunerations_stale as (
-    select count(*)::int as total
-    from public.remunerations
-    where status = 'pending' and created_at < now() - interval '10 days'
-  ),
-  recent_activity as (
-    select coalesce(jsonb_agg(entry order by entry ->> 'at' desc), '[]'::jsonb) as items
-    from (
-      select jsonb_build_object(
-        'title', l.action,
-        'description', coalesce(l.description, ''),
-        'at', l.created_at
-      ) as entry
-      from public.audit_logs l
-      order by l.created_at desc
-      limit 5
-    ) t
-  )
-select jsonb_build_object(
-  'candidatos_aguardando', (select total from applications_waiting),
-  'entrevistas_agendadas', (select total from interviews_scheduled),
-  'aprovados_mes', (select total from approved_this_month),
-  'membros_ativos', (select total from members_active),
-  'membros_pagantes', (select total from members_paying),
-  'meta_membros', 500,
-  'oportunidades_ativas', (select total from opportunities_open),
-  'volume_solicitado', (select volume_active from opportunities_open),
-  'volume_negociacao', (select volume_negotiation from opportunities_open),
-  'receita_assinaturas_cents', (select cents from subscription_revenue),
-  'remuneracoes_previstas', (select forecast from remunerations_open),
-  'remuneracoes_a_pagar', (select payable from remunerations_open),
-  'docs_pendentes_atrasados', (select total from docs_pending_late),
-  'renovacoes_em_7_dias', (select total from renewals_soon),
-  'remuneracoes_paradas', (select total from remunerations_stale),
-  'atividade_recente', (select items from recent_activity)
-);
+declare
+  result jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'Acesso negado: apenas administradores podem consultar KPIs.';
+  end if;
+
+  with
+    applications_waiting as (
+      select count(*)::int as total
+      from public.applications
+      where status in ('submitted', 'under_review', 'compliance_review')
+    ),
+    interviews_scheduled as (
+      select count(*)::int as total
+      from public.application_interviews
+      where status = 'scheduled' and scheduled_at >= now()
+    ),
+    approved_this_month as (
+      select count(*)::int as total
+      from public.applications
+      where status in ('approved', 'converted')
+        and coalesce(decided_at, updated_at) >= date_trunc('month', now())
+    ),
+    members_active as (
+      select count(*)::int as total from public.members where status = 'active'
+    ),
+    members_paying as (
+      select count(distinct s.member_id)::int as total
+      from public.subscriptions s
+      join public.members m on m.id = s.member_id
+      where s.status in ('active', 'trialing') and m.status = 'active'
+    ),
+    opportunities_open as (
+      select
+        count(*)::int as total,
+        coalesce(sum(requested_volume) filter (where stage = 'active'), 0)::numeric as volume_active,
+        coalesce(sum(requested_volume) filter (where stage = 'negotiation'), 0)::numeric as volume_negotiation
+      from public.opportunities
+      where stage in ('active', 'negotiation')
+    ),
+    subscription_revenue as (
+      select coalesce(sum(price_cents), 0)::bigint as cents
+      from public.subscriptions
+      where status in ('active', 'trialing')
+    ),
+    remunerations_open as (
+      select
+        coalesce(sum(amount) filter (where status in ('pending', 'approved')), 0)::numeric as forecast,
+        coalesce(sum(amount) filter (where status = 'approved'), 0)::numeric as payable
+      from public.remunerations
+    ),
+    docs_pending_late as (
+      select count(*)::int as total
+      from public.application_documents d
+      join public.applications a on a.id = d.application_id
+      where d.status = 'pending'
+        and d.created_at < now() - interval '7 days'
+        and a.status not in ('approved', 'rejected', 'converted')
+    ),
+    renewals_soon as (
+      select count(*)::int as total
+      from public.subscriptions
+      where status in ('active', 'trialing')
+        and current_period_end is not null
+        and current_period_end between now() and now() + interval '7 days'
+    ),
+    remunerations_stale as (
+      select count(*)::int as total
+      from public.remunerations
+      where status = 'pending' and created_at < now() - interval '10 days'
+    ),
+    recent_activity as (
+      select coalesce(jsonb_agg(entry order by entry ->> 'at' desc), '[]'::jsonb) as items
+      from (
+        select jsonb_build_object(
+          'title', l.action,
+          'description', coalesce(l.description, ''),
+          'at', l.created_at
+        ) as entry
+        from public.audit_logs l
+        order by l.created_at desc
+        limit 5
+      ) t
+    )
+  select jsonb_build_object(
+    'candidatos_aguardando', (select total from applications_waiting),
+    'entrevistas_agendadas', (select total from interviews_scheduled),
+    'aprovados_mes', (select total from approved_this_month),
+    'membros_ativos', (select total from members_active),
+    'membros_pagantes', (select total from members_paying),
+    'meta_membros', 500,
+    'oportunidades_ativas', (select total from opportunities_open),
+    'volume_solicitado', (select volume_active from opportunities_open),
+    'volume_negociacao', (select volume_negotiation from opportunities_open),
+    'receita_assinaturas_cents', (select cents from subscription_revenue),
+    'remuneracoes_previstas', (select forecast from remunerations_open),
+    'remuneracoes_a_pagar', (select payable from remunerations_open),
+    'docs_pendentes_atrasados', (select total from docs_pending_late),
+    'renovacoes_em_7_dias', (select total from renewals_soon),
+    'remuneracoes_paradas', (select total from remunerations_stale),
+    'atividade_recente', (select items from recent_activity)
+  ) into result;
+
+  return result;
+end;
 $$;
 
-grant execute on function public.dashboard_kpis() to anon, authenticated;
+revoke execute on function public.dashboard_kpis() from anon, public;
+grant execute on function public.dashboard_kpis() to authenticated;

@@ -10,9 +10,12 @@ import { EMPTY_KPIS, normalizeKpis, type DashboardKpis } from "@/lib/dashboard";
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dsosgpzpxwzsuoxqdghn.supabase.co";
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzb3NncHpweHd6c3VveHFkZ2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjkyNDksImV4cCI6MjEwNDkwNTI0OX0.pfbQa-JET7Xj3J7n3t-SBX-UlWnjUFRqSHSRgHHnXjc";
+
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    key,
     {
       cookies: {
         getAll() {
