@@ -32,3 +32,33 @@ export async function GET() {
     return NextResponse.json({ applications: [], error: err?.message }, { status: 500 });
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, status } = body;
+
+    if (!id || !status) {
+      return NextResponse.json({ error: "Parâmetros 'id' e 'status' são obrigatórios" }, { status: 400 });
+    }
+
+    const supabase = await createSupabaseServerClient();
+
+    // Atualiza por code ou por id
+    const { data, error } = await supabase
+      .from("applications")
+      .update({ status, updated_at: new Date().toISOString() })
+      .or(`code.eq.${id},id.eq.${id}`)
+      .select();
+
+    if (error) {
+      console.error("[api/admin/candidaturas] erro ao atualizar status:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, updated: data });
+  } catch (err: any) {
+    console.error("[api/admin/candidaturas] erro interno no PATCH:", err?.message);
+    return NextResponse.json({ error: err?.message || "Erro desconhecido" }, { status: 500 });
+  }
+}
