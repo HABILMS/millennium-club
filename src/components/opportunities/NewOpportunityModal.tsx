@@ -32,11 +32,18 @@ import {
   Zap,
   Clock,
   Crown,
+  AlertTriangle,
 } from "lucide-react";
 import {
   OpportunityItem,
   opportunityCategories,
 } from "@/lib/opportunities";
+import {
+  convertPdfToMarkdown,
+  compressImage,
+  MAX_PDF_SIZE_MB,
+  MAX_PDF_SIZE_BYTES,
+} from "@/lib/documentParser";
 
 interface NewOpportunityModalProps {
   onClose: () => void;
@@ -66,16 +73,17 @@ export function NewOpportunityModal({
   const [imageUrl, setImageUrl] = useState("https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=1200&q=80");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  // Estados do Gerador de Imagem com IA (NVIDIA)
+  // Estados do Gerador de Imagem com IA
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [generatedAiImage, setGeneratedAiImage] = useState<string | null>(null);
   const [isImageApproved, setIsImageApproved] = useState(false);
-  const [aiProvider, setAiProvider] = useState<string | null>(null);
+  const [aiProvider, setAiProvider] = useState<string | null>("IA Millennium");
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   // Estados do Auto-Leitor de PDF e Imagem com IA
   const [isAnalyzingDoc, setIsAnalyzingDoc] = useState(false);
+  const [analyzingStepText, setAnalyzingStepText] = useState("A Inteligência Artificial está lendo e estruturando os dados do negócio...");
   const [docAnalysisSuccess, setDocAnalysisSuccess] = useState<string | null>(null);
   const [docAnalysisError, setDocAnalysisError] = useState<string | null>(null);
 
@@ -112,86 +120,94 @@ export function NewOpportunityModal({
     }
   }, []);
 
-  // Leitura Automática de PDF ou Imagem com NVIDIA Llama 3.2 Vision
+  // Leitura Automática de PDF ou Imagem com extração inteligente e prevenção de travamentos
   const handleAutoAnalyzeFile = async (file: File, fileType: "pdf" | "image") => {
     setIsAnalyzingDoc(true);
     setDocAnalysisSuccess(null);
     setDocAnalysisError(null);
 
+    // 1. Limite estrito de tamanho para evitar sobrecarga de memória e travamento
+    if (fileType === "pdf" && file.size > MAX_PDF_SIZE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setDocAnalysisError(
+        `O arquivo selecionado possui ${sizeMb} MB. Para garantir uma leitura ultrarrápida e sem travamentos, o limite para análise automática é de ${MAX_PDF_SIZE_MB} MB. Dica: selecione um arquivo de até ${MAX_PDF_SIZE_MB} MB ou envie um teaser/deck com as páginas principais do negócio.`
+      );
+      setIsAnalyzingDoc(false);
+      return;
+    }
+
     try {
-      const reader = new FileReader();
-
-      reader.onloadend = async () => {
-        const base64Data = reader.result as string;
-
-        // Se for PDF, já salva no anexo oficial
-        if (fileType === "pdf") {
-          setPdfFileName(file.name);
-          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-          setPdfFileSize(`${sizeMb} MB`);
-        }
-
-        // Se for imagem, já define como imagem prévia
-        if (fileType === "image") {
-          setImageUrl(base64Data);
-          setImagePreview(base64Data);
-          setIsImageApproved(true);
-        }
-
-        // Envia para a API de leitura com IA NVIDIA Llama 3.2 Vision
-        const payload: any = {
-          fileName: file.name,
-        };
-
-        if (fileType === "image") {
-          payload.image = base64Data;
-        } else {
-          payload.pdfData = base64Data;
-        }
-
-        const res = await fetch("/api/analyze-document", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          throw new Error("Falha ao analisar o documento.");
-        }
-
-        const result = await res.json();
-        const extracted = result.data;
-
-        if (extracted) {
-          // Preenchimento automático nos campos; campos vazios permanecem em branco
-          if (extracted.title) setTitle(extracted.title);
-          if (extracted.category) setCategory(extracted.category);
-          if (extracted.volume) setVolume(extracted.volume);
-          if (extracted.location) setLocation(extracted.location);
-          if (extracted.stage) setStage(extracted.stage);
-          if (extracted.summary) setSummary(extracted.summary);
-          if (extracted.details) setDetails(extracted.details);
-
-          if (Array.isArray(extracted.highlights)) {
-            if (extracted.highlights[0]) setHighlight1(extracted.highlights[0]);
-            if (extracted.highlights[1]) setHighlight2(extracted.highlights[1]);
-            if (extracted.highlights[2]) setHighlight3(extracted.highlights[2]);
-          }
-
-          setDocAnalysisSuccess(
-            `✓ Documento "${file.name}" lido com sucesso pela IA NVIDIA! Os campos foram preenchidos automaticamente. Revise ou complete os campos restantes abaixo.`
-          );
-        } else {
-          setDocAnalysisSuccess(`Arquivo "${file.name}" anexado com sucesso! Complete os campos necessários abaixo.`);
-        }
-
-        setIsAnalyzingDoc(false);
+      const payload: any = {
+        fileName: file.name,
       };
 
-      reader.readAsDataURL(file);
+      if (fileType === "pdf") {
+        setPdfFileName(file.name);
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        setPdfFileSize(`${sizeMb} MB`);
+
+        setAnalyzingStepText("Convertendo páginas do PDF em Markdown estruturado...");
+
+        // Conversão ultrarrápida no cliente para Markdown (lê páginas principais)
+        const { markdown, isScanned, firstPageImage } = await convertPdfToMarkdown(file, 6);
+
+        if (isScanned && firstPageImage) {
+          setAnalyzingStepText("Documento escaneado detectado. Analisando dados visuais com IA...");
+          payload.image = firstPageImage;
+        } else {
+          setAnalyzingStepText("Processando tese e informações com Inteligência Artificial...");
+          payload.text = markdown;
+        }
+      } else {
+        setAnalyzingStepText("Otimizando imagem e analisando ativo com Inteligência Artificial...");
+        // Comprime a imagem no cliente antes de enviar para manter o payload leve (<250 KB)
+        const compressedBase64 = await compressImage(file, 1280, 800, 0.8);
+        setImageUrl(compressedBase64);
+        setImagePreview(compressedBase64);
+        setIsImageApproved(true);
+        payload.image = compressedBase64;
+      }
+
+      // Envia payload leve (texto Markdown ou imagem comprimida) para a API
+      const res = await fetch("/api/analyze-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error("Falha na resposta do servidor.");
+      }
+
+      const result = await res.json();
+      const extracted = result.data;
+
+      if (extracted) {
+        // Preenchimento automático nos campos; campos ausentes permanecem em branco
+        if (extracted.title) setTitle(extracted.title);
+        if (extracted.category) setCategory(extracted.category);
+        if (extracted.volume) setVolume(extracted.volume);
+        if (extracted.location) setLocation(extracted.location);
+        if (extracted.stage) setStage(extracted.stage);
+        if (extracted.summary) setSummary(extracted.summary);
+        if (extracted.details) setDetails(extracted.details);
+
+        if (Array.isArray(extracted.highlights)) {
+          if (extracted.highlights[0]) setHighlight1(extracted.highlights[0]);
+          if (extracted.highlights[1]) setHighlight2(extracted.highlights[1]);
+          if (extracted.highlights[2]) setHighlight3(extracted.highlights[2]);
+        }
+
+        setDocAnalysisSuccess(
+          `✓ Documento "${file.name}" lido e estruturado com sucesso pela IA! Os dados foram pré-preenchidos. Confira e complete os campos necessários abaixo.`
+        );
+      } else {
+        setDocAnalysisSuccess(`Arquivo "${file.name}" anexado com sucesso! Complete os campos necessários abaixo.`);
+      }
     } catch (err: any) {
       console.error("Erro na leitura com IA:", err);
       setDocAnalysisError("Não foi possível extrair automaticamente todos os dados. Preencha manualmente os campos abaixo.");
+    } finally {
       setIsAnalyzingDoc(false);
     }
   };
@@ -226,7 +242,7 @@ export function NewOpportunityModal({
     setGenerationError(null);
   };
 
-  // Disparo da geração de imagem via API (NVIDIA)
+  // Disparo da geração de imagem via API
   const handleGenerateImage = async () => {
     if (!aiPrompt.trim()) {
       handleSuggestPrompt();
@@ -250,7 +266,7 @@ export function NewOpportunityModal({
       const data = await res.json();
       if (data.imageUrl) {
         setGeneratedAiImage(data.imageUrl);
-        setAiProvider(data.provider || "NVIDIA / AI Generator");
+        setAiProvider(data.provider || "IA Millennium");
         setIsImageApproved(false);
       } else {
         throw new Error("URL de imagem não retornada.");
@@ -362,10 +378,10 @@ export function NewOpportunityModal({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <p className="text-sm font-bold text-white flex items-center gap-1.5">
-                <Zap className="h-4 w-4 text-gold" /> Auto-Preenchimento com IA NVIDIA (Zero Esforço)
+                <Zap className="h-4 w-4 text-gold" /> Auto-Preenchimento Inteligente com IA (Zero Esforço)
               </p>
               <p className="text-xs text-silver mt-0.5">
-                Já possui um <strong>PDF (Teaser / Deck)</strong> ou <strong>Imagem do ativo</strong>? Carregue o arquivo e a IA preencherá os campos para você em instantes!
+                Já possui um <strong>PDF (Teaser / Deck até 10 MB)</strong> ou <strong>Imagem do ativo</strong>? A IA converte em Markdown e preenche os campos automaticamente em segundos!
               </p>
             </div>
 
@@ -383,7 +399,7 @@ export function NewOpportunityModal({
             {/* Ler PDF */}
             <label className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-dashed border-alert/50 bg-charcoal/60 hover:bg-alert/10 cursor-pointer transition-colors text-xs font-semibold text-white group">
               <FileText className="h-4 w-4 text-alert group-hover:scale-110 transition-transform" />
-              <span>Ler Teaser ou Deck (PDF)</span>
+              <span>Ler Teaser ou Deck (PDF até 10 MB)</span>
               <input
                 type="file"
                 accept="application/pdf"
@@ -413,11 +429,15 @@ export function NewOpportunityModal({
             </label>
           </div>
 
-          {/* Indicador de Carregamento da Leitura */}
+          <div className="flex items-center justify-between text-[11px] text-text-secondary px-1">
+            <span>⚡ Leitura ultrarrápida: arquivos de até 10 MB convertidos automaticamente em texto sem travamentos.</span>
+          </div>
+
+          {/* Indicador de Carregamento da Leitura com passos claros */}
           {isAnalyzingDoc && (
             <div className="flex items-center justify-center gap-2.5 p-3 bg-obsidian/80 rounded-xl border border-gold/40 text-gold text-xs font-medium animate-pulse">
-              <Loader2 className="h-4 w-4 animate-spin text-gold" />
-              <span>A IA NVIDIA Llama 3.2 Vision está lendo o documento e extraindo as informações do negócio...</span>
+              <Loader2 className="h-4 w-4 animate-spin text-gold shrink-0" />
+              <span>{analyzingStepText}</span>
             </div>
           )}
 
@@ -429,10 +449,11 @@ export function NewOpportunityModal({
             </div>
           )}
 
-          {/* Feedback de Erro */}
+          {/* Feedback de Erro / Limite de Arquivo */}
           {docAnalysisError && (
-            <div className="p-3 bg-alert/10 border border-alert/30 text-alert text-xs rounded-xl">
-              {docAnalysisError}
+            <div className="p-3 bg-alert/15 border border-alert/30 text-alert text-xs rounded-xl flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{docAnalysisError}</span>
             </div>
           )}
         </div>
@@ -572,11 +593,11 @@ export function NewOpportunityModal({
             </div>
           </div>
 
-          {/* Seção 2: GERADOR DE IMAGENS COM IA (NVIDIA) & FOTOS */}
+          {/* Seção 2: GERADOR DE IMAGENS COM IA & FOTOS */}
           <div className="space-y-4 pt-4 border-t border-border">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-gold uppercase tracking-wider flex items-center gap-1.5">
-                <Cpu className="h-4 w-4 text-emerald" /> 2. Imagem do Ativo (Gerador com IA NVIDIA / Upload)
+                <Cpu className="h-4 w-4 text-emerald" /> 2. Imagem do Ativo (Gerador com IA / Upload)
               </h3>
               <span className="text-[11px] text-emerald bg-emerald/10 border border-emerald/30 px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1">
                 <Sparkles className="h-3 w-3" /> IA Habilitada
@@ -637,7 +658,7 @@ export function NewOpportunityModal({
                   ) : (
                     <>
                       <Wand2 className="h-4 w-4" />
-                      Gerar Imagem com IA (NVIDIA)
+                      Gerar Imagem com IA
                     </>
                   )}
                 </Button>
@@ -744,7 +765,7 @@ export function NewOpportunityModal({
                 <span className="text-xs font-semibold text-white block">Documento Anexo (Teaser em PDF)</span>
                 <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-alert/40 rounded-xl cursor-pointer hover:bg-alert/5 transition-colors">
                   <FileText className="h-3.5 w-3.5 text-alert" />
-                  <span className="text-xs font-medium text-alert">Anexar Documento PDF</span>
+                  <span className="text-xs font-medium text-alert">Anexar Documento PDF (Até 10 MB)</span>
                   <input
                     type="file"
                     accept="application/pdf"

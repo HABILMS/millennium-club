@@ -8,47 +8,38 @@ export async function POST(request: Request) {
 
     if (!image && !text && !pdfData) {
       return NextResponse.json(
-        { error: "Nenhum documento, imagem ou arquivo PDF foi fornecido para análise." },
+        { error: "Nenhum documento, texto ou imagem foi fornecido para análise." },
         { status: 400 }
       );
     }
 
-    const nvidiaApiKey = process.env.NVIDIA_API_KEY || process.env.NEXT_PUBLIC_NVIDIA_API_KEY;
+    const apiKey = process.env.NVIDIA_API_KEY || process.env.NEXT_PUBLIC_NVIDIA_API_KEY;
 
-    let extractedText = text || "";
+    let extractedText = (text || "").trim();
 
-    // Se receber PDF em base64, extrai o texto do stream do PDF
-    if (pdfData && typeof pdfData === "string") {
+    // Se receber pdfData bruto (fallback caso não tenha sido convertido no cliente)
+    if (!extractedText && pdfData && typeof pdfData === "string") {
       try {
         const base64Content = pdfData.includes(",") ? pdfData.split(",")[1] : pdfData;
-        const buffer = Buffer.from(base64Content, "base64");
-        const rawString = buffer.toString("binary");
+        // Limita a 500 KB para evitar travamento de memória e CPU
+        const truncatedBase64 = base64Content.slice(0, 700000);
+        const buffer = Buffer.from(truncatedBase64, "base64");
+        const rawString = buffer.toString("latin1").slice(0, 300000);
 
-        // Extrai sequências de texto legíveis do PDF
-        const textMatches = rawString.match(/\(([^)]{2,})\)/g) || [];
-        const extractedFromPdf = textMatches
-          .map((m) => m.slice(1, -1).replace(/\\([()\\])/g, "$1"))
-          .filter((s) => s.length > 2 && /[a-zA-Z0-9]/.test(s))
-          .join(" ");
-
-        if (extractedFromPdf.length > 20) {
-          extractedText = (extractedText ? extractedText + "\n\n" : "") + extractedFromPdf;
-        } else {
-          // Fallback para strings legíveis gerais
-          const cleanTokens = rawString.match(/[A-Za-z0-9À-ÿ$.,/–-]{3,}/g) || [];
-          extractedText = cleanTokens.slice(0, 400).join(" ");
-        }
+        // Extrai tokens de texto legíveis sem regex pesado
+        const cleanTokens = rawString.match(/[A-Za-z0-9À-ÿ$.,/–-]{3,}/g) || [];
+        extractedText = cleanTokens.slice(0, 400).join(" ");
       } catch (pdfErr) {
-        console.warn("[api/analyze-document] Erro ao extrair texto do PDF:", pdfErr);
+        console.warn("[api/analyze-document] Erro no fallback de leitura do PDF:", pdfErr);
       }
     }
 
     let extractedData = null;
 
-    if (nvidiaApiKey) {
+    if (apiKey) {
       try {
         const systemPrompt = `Você é um analista sênior de M&A, private equity e investimentos do Millennium Club.
-Sua missão é ler o documento, imagem ou teaser de negócio fornecido e extrair com precisão os dados para preenchimento automático.
+Sua missão é ler o documento (em markdown ou texto) ou imagem do negócio fornecido e extrair com precisão os dados para preenchimento da oportunidade.
 Retorne EXCLUSIVAMENTE um objeto JSON válido (sem tags markdown, sem explicações antes ou depois) no seguinte formato:
 {
   "title": "Título conciso e comercial da oportunidade",
@@ -67,7 +58,7 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
         if (extractedText) {
           userContent.push({
             type: "text",
-            text: `Analise as seguintes informações extraídas do arquivo "${fileName || "documento"}":\n\n${extractedText.slice(0, 10000)}`,
+            text: `Analise as seguintes informações extraídas em formato Markdown do arquivo "${fileName || "documento"}":\n\n${extractedText.slice(0, 8000)}`,
           });
         }
 
@@ -84,25 +75,32 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
           });
         }
 
-        const nvidiaRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        // Timeout de proteção de 18 segundos para evitar travamento
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 18000);
+
+        const aiRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${nvidiaApiKey}`,
+            "Authorization": `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model: "meta/llama-3.2-11b-vision-instruct",
             messages: [
               { role: "system", content: systemPrompt },
-              { role: "user", content: userContent },
+              { role: "user", userContent: userContent, content: userContent },
             ],
             temperature: 0.1,
             max_tokens: 1200,
           }),
+          signal: controller.signal,
         });
 
-        if (nvidiaRes.ok) {
-          const aiJson = await nvidiaRes.json();
+        clearTimeout(timeoutId);
+
+        if (aiRes.ok) {
+          const aiJson = await aiRes.json();
           const rawResponse = aiJson.choices?.[0]?.message?.content || "";
 
           // Limpa tags ```json
@@ -116,14 +114,14 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
             extractedData = JSON.parse(jsonMatch[0]);
           }
         } else {
-          console.warn("[api/analyze-document] NVIDIA NIM status:", nvidiaRes.status);
+          console.warn("[api/analyze-document] Resposta da IA com status:", aiRes.status);
         }
       } catch (aiErr) {
-        console.warn("[api/analyze-document] Erro ao chamar NVIDIA NIM:", aiErr);
+        console.warn("[api/analyze-document] Falha na chamada da IA (prosseguindo com parser inteligente):", aiErr);
       }
     }
 
-    // Heurística de contingência
+    // Heurística de contingência inteligente caso a IA externa esteja inacessível
     if (!extractedData) {
       const combined = `${extractedText || ""} ${fileName || ""}`.toLowerCase();
       let detectedCat = "socio_projetos";
@@ -153,7 +151,7 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
         volume: volume || "",
         location: location || "",
         stage: "Ativa",
-        summary: extractedText ? extractedText.slice(0, 220).trim() + "..." : "Oportunidade extraída a partir do documento anexo.",
+        summary: extractedText ? extractedText.slice(0, 250).trim() + "..." : "Oportunidade extraída a partir do documento anexo.",
         details: extractedText ? extractedText.slice(0, 600).trim() : "",
         highlights: ["Material lido e processado", "Dados disponíveis sob NDA"],
       };
@@ -162,7 +160,7 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
     return NextResponse.json({
       success: true,
       data: extractedData,
-      provider: nvidiaApiKey ? "NVIDIA Llama 3.2 Vision" : "Smart Parser",
+      provider: "IA Millennium",
     });
   } catch (err: any) {
     console.error("[api/analyze-document] Falha interna:", err);
