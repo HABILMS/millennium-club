@@ -21,12 +21,10 @@ export async function POST(request: Request) {
     if (!extractedText && pdfData && typeof pdfData === "string") {
       try {
         const base64Content = pdfData.includes(",") ? pdfData.split(",")[1] : pdfData;
-        // Limita a 500 KB para evitar travamento de memória e CPU
         const truncatedBase64 = base64Content.slice(0, 700000);
         const buffer = Buffer.from(truncatedBase64, "base64");
         const rawString = buffer.toString("latin1").slice(0, 300000);
 
-        // Extrai tokens de texto legíveis sem regex pesado
         const cleanTokens = rawString.match(/[A-Za-z0-9À-ÿ$.,/–-]{3,}/g) || [];
         extractedText = cleanTokens.slice(0, 400).join(" ");
       } catch (pdfErr) {
@@ -39,7 +37,7 @@ export async function POST(request: Request) {
     if (apiKey) {
       try {
         const systemPrompt = `Você é um analista sênior de M&A, private equity e investimentos do Millennium Club.
-Sua missão é ler o documento (em markdown ou texto) ou imagem do negócio fornecido e extrair com precisão os dados para preenchimento da oportunidade.
+Sua missão é ler o documento (em texto, markdown, word ou pdf) ou imagem de negócio fornecido e extrair com precisão os dados para preenchimento da oportunidade.
 Retorne EXCLUSIVAMENTE um objeto JSON válido (sem tags markdown, sem explicações antes ou depois) no seguinte formato:
 {
   "title": "Título conciso e comercial da oportunidade",
@@ -53,29 +51,26 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido (sem tags markdown, sem explicaç�
 }
 REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com segurança no documento/imagem, DEIXE-O COMO STRING VAZIA (""). Não invente dados financeiros não presentes no material.`;
 
-        const userContent: any[] = [];
-
-        if (extractedText) {
-          userContent.push({
-            type: "text",
-            text: `Analise as seguintes informações extraídas em formato Markdown do arquivo "${fileName || "documento"}":\n\n${extractedText.slice(0, 8000)}`,
-          });
-        }
+        let userMessageContent: any = "";
 
         if (image) {
-          userContent.push({
-            type: "text",
-            text: `Analise esta imagem/teaser de oportunidade de negócio "${fileName || "imagem"}":`,
-          });
-          userContent.push({
-            type: "image_url",
-            image_url: {
-              url: image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`,
+          userMessageContent = [
+            {
+              type: "text",
+              text: `Analise as informações e a imagem/teaser da oportunidade de negócio contidas no arquivo "${fileName || "documento"}":\n\n${extractedText ? extractedText.slice(0, 5000) : ""}`,
             },
-          });
+            {
+              type: "image_url",
+              image_url: {
+                url: image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`,
+              },
+            },
+          ];
+        } else {
+          userMessageContent = `Analise as seguintes informações extraídas do arquivo "${fileName || "documento"}":\n\n${extractedText.slice(0, 10000)}`;
         }
 
-        // Timeout de proteção de 18 segundos para evitar travamento
+        // Timeout de proteção de 18 segundos
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 18000);
 
@@ -89,7 +84,7 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
             model: "meta/llama-3.2-11b-vision-instruct",
             messages: [
               { role: "system", content: systemPrompt },
-              { role: "user", userContent: userContent, content: userContent },
+              { role: "user", content: userMessageContent },
             ],
             temperature: 0.1,
             max_tokens: 1200,
@@ -103,7 +98,7 @@ REGRA CRÍTICA: Se algum campo não estiver claro ou não puder ser lido com seg
           const aiJson = await aiRes.json();
           const rawResponse = aiJson.choices?.[0]?.message?.content || "";
 
-          // Limpa tags ```json
+          // Limpa formatações markdown ```json
           const cleanedJsonString = rawResponse
             .replace(/```json/gi, "")
             .replace(/```/gi, "")

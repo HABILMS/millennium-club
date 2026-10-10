@@ -39,10 +39,10 @@ import {
   opportunityCategories,
 } from "@/lib/opportunities";
 import {
-  convertPdfToMarkdown,
+  convertAnyDocumentToMarkdown,
   compressImage,
-  MAX_PDF_SIZE_MB,
-  MAX_PDF_SIZE_BYTES,
+  MAX_DOC_SIZE_MB,
+  MAX_DOC_SIZE_BYTES,
 } from "@/lib/documentParser";
 
 interface NewOpportunityModalProps {
@@ -81,7 +81,7 @@ export function NewOpportunityModal({
   const [aiProvider, setAiProvider] = useState<string | null>("IA Millennium");
   const [generationError, setGenerationError] = useState<string | null>(null);
 
-  // Estados do Auto-Leitor de PDF e Imagem com IA
+  // Estados do Auto-Leitor de PDF, Word, TXT e Imagem com IA
   const [isAnalyzingDoc, setIsAnalyzingDoc] = useState(false);
   const [analyzingStepText, setAnalyzingStepText] = useState("A Inteligência Artificial está lendo e estruturando os dados do negócio...");
   const [docAnalysisSuccess, setDocAnalysisSuccess] = useState<string | null>(null);
@@ -91,7 +91,7 @@ export function NewOpportunityModal({
   const [trialDaysLeft, setTrialDaysLeft] = useState<number>(7);
   const [isPaidPlan, setIsPaidPlan] = useState<boolean>(true);
 
-  // PDF
+  // Documento Anexo
   const [pdfFileName, setPdfFileName] = useState("Teaser_Executivo_Investimento.pdf");
   const [pdfFileSize, setPdfFileSize] = useState("3.2 MB");
 
@@ -120,17 +120,17 @@ export function NewOpportunityModal({
     }
   }, []);
 
-  // Leitura Automática de PDF ou Imagem com extração inteligente e prevenção de travamentos
-  const handleAutoAnalyzeFile = async (file: File, fileType: "pdf" | "image") => {
+  // Leitura Automática de Documentos (PDF, Word, TXT) ou Imagem
+  const handleAutoAnalyzeFile = async (file: File, fileType: "document" | "image") => {
     setIsAnalyzingDoc(true);
     setDocAnalysisSuccess(null);
     setDocAnalysisError(null);
 
-    // 1. Limite estrito de tamanho para evitar sobrecarga de memória e travamento
-    if (fileType === "pdf" && file.size > MAX_PDF_SIZE_BYTES) {
+    // 1. Limite estrito de tamanho para evitar travamento
+    if (fileType === "document" && file.size > MAX_DOC_SIZE_BYTES) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
       setDocAnalysisError(
-        `O arquivo selecionado possui ${sizeMb} MB. Para garantir uma leitura ultrarrápida e sem travamentos, o limite para análise automática é de ${MAX_PDF_SIZE_MB} MB. Dica: selecione um arquivo de até ${MAX_PDF_SIZE_MB} MB ou envie um teaser/deck com as páginas principais do negócio.`
+        `O arquivo selecionado possui ${sizeMb} MB. Para garantir uma leitura ultrarrápida e sem travamentos, o limite para análise automática é de ${MAX_DOC_SIZE_MB} MB. Dica: selecione um arquivo de até ${MAX_DOC_SIZE_MB} MB ou envie um teaser/resumo com as páginas principais do negócio.`
       );
       setIsAnalyzingDoc(false);
       return;
@@ -141,21 +141,21 @@ export function NewOpportunityModal({
         fileName: file.name,
       };
 
-      if (fileType === "pdf") {
+      if (fileType === "document") {
         setPdfFileName(file.name);
         const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
         setPdfFileSize(`${sizeMb} MB`);
 
-        setAnalyzingStepText("Convertendo páginas do PDF em Markdown estruturado...");
+        setAnalyzingStepText(`Lendo "${file.name}" e convertendo em Markdown estruturado...`);
 
-        // Conversão ultrarrápida no cliente para Markdown (lê páginas principais)
-        const { markdown, isScanned, firstPageImage } = await convertPdfToMarkdown(file, 6);
+        // Conversão ultrarrápida no cliente para Markdown (lê TXT, Word .docx/.doc ou PDF)
+        const { markdown, isScanned, firstPageImage, detectedType } = await convertAnyDocumentToMarkdown(file);
 
         if (isScanned && firstPageImage) {
           setAnalyzingStepText("Documento escaneado detectado. Analisando dados visuais com IA...");
           payload.image = firstPageImage;
         } else {
-          setAnalyzingStepText("Processando tese e informações com Inteligência Artificial...");
+          setAnalyzingStepText(`Processando conteúdo do documento (${detectedType.toUpperCase()}) com Inteligência Artificial...`);
           payload.text = markdown;
         }
       } else {
@@ -199,7 +199,7 @@ export function NewOpportunityModal({
         }
 
         setDocAnalysisSuccess(
-          `✓ Documento "${file.name}" lido e estruturado com sucesso pela IA! Os dados foram pré-preenchidos. Confira e complete os campos necessários abaixo.`
+          `✓ Arquivo "${file.name}" lido e estruturado com sucesso pela IA! Os dados foram pré-preenchidos. Confira e complete os campos necessários abaixo.`
         );
       } else {
         setDocAnalysisSuccess(`Arquivo "${file.name}" anexado com sucesso! Complete os campos necessários abaixo.`);
@@ -287,11 +287,11 @@ export function NewOpportunityModal({
     }
   };
 
-  // Handler para upload local de PDF
-  const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handler para upload local de Documento (PDF, Word, TXT)
+  const handleDocUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleAutoAnalyzeFile(file, "pdf");
+      handleAutoAnalyzeFile(file, "document");
     }
   };
 
@@ -373,7 +373,7 @@ export function NewOpportunityModal({
           </button>
         </div>
 
-        {/* RECURSO 1: AUTO-PREENCHIMENTO COM IA LENDO PDF OU IMAGEM */}
+        {/* RECURSO 1: AUTO-PREENCHIMENTO COM IA LENDO PDF, WORD, TXT OU IMAGEM */}
         <div className="mt-5 p-4 rounded-2xl bg-gradient-to-r from-gold/15 via-charcoal/80 to-gold/10 border border-gold/40 shadow-inner space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
@@ -381,7 +381,7 @@ export function NewOpportunityModal({
                 <Zap className="h-4 w-4 text-gold" /> Auto-Preenchimento Inteligente com IA (Zero Esforço)
               </p>
               <p className="text-xs text-silver mt-0.5">
-                Já possui um <strong>PDF (Teaser / Deck até 10 MB)</strong> ou <strong>Imagem do ativo</strong>? A IA converte em Markdown e preenche os campos automaticamente em segundos!
+                Já possui um <strong>resumo em TXT</strong>, <strong>Word (.docx)</strong>, <strong>PDF</strong> ou <strong>Imagem</strong>? A IA converte o conteúdo e preenche os campos automaticamente em segundos!
               </p>
             </div>
 
@@ -396,17 +396,17 @@ export function NewOpportunityModal({
 
           {/* Botões de Upload para Auto-leitura */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {/* Ler PDF */}
+            {/* Ler Documento (PDF, Word, TXT) */}
             <label className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-dashed border-alert/50 bg-charcoal/60 hover:bg-alert/10 cursor-pointer transition-colors text-xs font-semibold text-white group">
               <FileText className="h-4 w-4 text-alert group-hover:scale-110 transition-transform" />
-              <span>Ler Teaser ou Deck (PDF até 10 MB)</span>
+              <span>Ler Resumo / Teaser (PDF, Word, TXT)</span>
               <input
                 type="file"
-                accept="application/pdf"
+                accept=".pdf,.docx,.doc,.txt,.md,.rtf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
                 disabled={isAnalyzingDoc}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleAutoAnalyzeFile(f, "pdf");
+                  if (f) handleAutoAnalyzeFile(f, "document");
                 }}
                 className="hidden"
               />
@@ -430,7 +430,7 @@ export function NewOpportunityModal({
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-text-secondary px-1">
-            <span>⚡ Leitura ultrarrápida: arquivos de até 10 MB convertidos automaticamente em texto sem travamentos.</span>
+            <span>⚡ Suporta <strong>TXT, Word (.docx), PDF</strong> e imagens. Arquivos de até 10 MB lidos sem travamento.</span>
           </div>
 
           {/* Indicador de Carregamento da Leitura com passos claros */}
@@ -731,14 +731,14 @@ export function NewOpportunityModal({
               )}
             </div>
 
-            {/* Alternativa: Upload Manual de Foto e PDF */}
+            {/* Alternativa: Upload Manual de Foto e Documento */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
               {/* Upload Manual de Foto */}
               <div className="p-3.5 bg-charcoal/40 border border-border rounded-xl space-y-2">
                 <span className="text-xs font-semibold text-white block">Ou faça Upload de Foto Própria</span>
                 <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-border rounded-xl cursor-pointer hover:bg-gold/5 transition-colors">
                   <Upload className="h-3.5 w-3.5 text-gold" />
-                  <span className="text-xs font-medium text-silver hover:text-gold">Escolher arquivo do computador</span>
+                  <span className="text-xs font-medium text-silver hover:text-gold">Escolher imagem do computador</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -760,16 +760,16 @@ export function NewOpportunityModal({
                 />
               </div>
 
-              {/* Upload de PDF */}
+              {/* Upload de Documento Anexo (PDF, Word, TXT) */}
               <div className="p-3.5 bg-charcoal/40 border border-border rounded-xl space-y-2">
-                <span className="text-xs font-semibold text-white block">Documento Anexo (Teaser em PDF)</span>
+                <span className="text-xs font-semibold text-white block">Documento Anexo (PDF, Word ou TXT)</span>
                 <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-alert/40 rounded-xl cursor-pointer hover:bg-alert/5 transition-colors">
                   <FileText className="h-3.5 w-3.5 text-alert" />
-                  <span className="text-xs font-medium text-alert">Anexar Documento PDF (Até 10 MB)</span>
+                  <span className="text-xs font-medium text-alert">Anexar Arquivo (PDF, Word, TXT)</span>
                   <input
                     type="file"
-                    accept="application/pdf"
-                    onChange={handlePdfUpload}
+                    accept=".pdf,.docx,.doc,.txt,.md,.rtf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                    onChange={handleDocUpload}
                     className="hidden"
                   />
                 </label>
