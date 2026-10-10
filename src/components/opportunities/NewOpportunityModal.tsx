@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -26,8 +26,12 @@ import {
   Loader2,
   RefreshCw,
   CheckCircle2,
-  Sliders,
   Cpu,
+  FileUp,
+  FileCheck2,
+  Zap,
+  Clock,
+  Crown,
 } from "lucide-react";
 import {
   OpportunityItem,
@@ -70,6 +74,15 @@ export function NewOpportunityModal({
   const [aiProvider, setAiProvider] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
+  // Estados do Auto-Leitor de PDF e Imagem com IA
+  const [isAnalyzingDoc, setIsAnalyzingDoc] = useState(false);
+  const [docAnalysisSuccess, setDocAnalysisSuccess] = useState<string | null>(null);
+  const [docAnalysisError, setDocAnalysisError] = useState<string | null>(null);
+
+  // Gestão de Teste Gratuito de 7 Dias vs Plano Pago
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number>(7);
+  const [isPaidPlan, setIsPaidPlan] = useState<boolean>(true);
+
   // PDF
   const [pdfFileName, setPdfFileName] = useState("Teaser_Executivo_Investimento.pdf");
   const [pdfFileSize, setPdfFileSize] = useState("3.2 MB");
@@ -81,6 +94,107 @@ export function NewOpportunityModal({
   const [authorBadge, setAuthorBadge] = useState("Membro Verificado 100%");
   const [authorWhatsapp, setAuthorWhatsapp] = useState("(11) 98888-0000");
   const [authorEmail, setAuthorEmail] = useState("membro@millenniumclub.com");
+
+  // Inicializa a contagem dos 7 dias de teste gratuito
+  useEffect(() => {
+    try {
+      const trialKey = "mc_ai_trial_start_v1";
+      let startTimestamp = localStorage.getItem(trialKey);
+      if (!startTimestamp) {
+        startTimestamp = Date.now().toString();
+        localStorage.setItem(trialKey, startTimestamp);
+      }
+      const daysPassed = Math.floor((Date.now() - parseInt(startTimestamp, 10)) / (1000 * 60 * 60 * 24));
+      const remaining = Math.max(0, 7 - daysPassed);
+      setTrialDaysLeft(remaining);
+    } catch (e) {
+      setTrialDaysLeft(7);
+    }
+  }, []);
+
+  // Leitura Automática de PDF ou Imagem com NVIDIA Llama 3.2 Vision
+  const handleAutoAnalyzeFile = async (file: File, fileType: "pdf" | "image") => {
+    setIsAnalyzingDoc(true);
+    setDocAnalysisSuccess(null);
+    setDocAnalysisError(null);
+
+    try {
+      const reader = new FileReader();
+
+      reader.onloadend = async () => {
+        const base64Data = reader.result as string;
+
+        // Se for PDF, já salva no anexo oficial
+        if (fileType === "pdf") {
+          setPdfFileName(file.name);
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+          setPdfFileSize(`${sizeMb} MB`);
+        }
+
+        // Se for imagem, já define como imagem prévia
+        if (fileType === "image") {
+          setImageUrl(base64Data);
+          setImagePreview(base64Data);
+          setIsImageApproved(true);
+        }
+
+        // Envia para a API de leitura com IA NVIDIA Llama 3.2 Vision
+        const payload: any = {
+          fileName: file.name,
+        };
+
+        if (fileType === "image") {
+          payload.image = base64Data;
+        } else {
+          payload.pdfData = base64Data;
+        }
+
+        const res = await fetch("/api/analyze-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          throw new Error("Falha ao analisar o documento.");
+        }
+
+        const result = await res.json();
+        const extracted = result.data;
+
+        if (extracted) {
+          // Preenchimento automático nos campos; campos vazios permanecem em branco
+          if (extracted.title) setTitle(extracted.title);
+          if (extracted.category) setCategory(extracted.category);
+          if (extracted.volume) setVolume(extracted.volume);
+          if (extracted.location) setLocation(extracted.location);
+          if (extracted.stage) setStage(extracted.stage);
+          if (extracted.summary) setSummary(extracted.summary);
+          if (extracted.details) setDetails(extracted.details);
+
+          if (Array.isArray(extracted.highlights)) {
+            if (extracted.highlights[0]) setHighlight1(extracted.highlights[0]);
+            if (extracted.highlights[1]) setHighlight2(extracted.highlights[1]);
+            if (extracted.highlights[2]) setHighlight3(extracted.highlights[2]);
+          }
+
+          setDocAnalysisSuccess(
+            `✓ Documento "${file.name}" lido com sucesso pela IA NVIDIA! Os campos foram preenchidos automaticamente. Revise ou complete os campos restantes abaixo.`
+          );
+        } else {
+          setDocAnalysisSuccess(`Arquivo "${file.name}" anexado com sucesso! Complete os campos necessários abaixo.`);
+        }
+
+        setIsAnalyzingDoc(false);
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error("Erro na leitura com IA:", err);
+      setDocAnalysisError("Não foi possível extrair automaticamente todos os dados. Preencha manualmente os campos abaixo.");
+      setIsAnalyzingDoc(false);
+    }
+  };
 
   // Função inteligente para sugerir prompt baseado nos dados preenchidos
   const handleSuggestPrompt = () => {
@@ -99,7 +213,7 @@ export function NewOpportunityModal({
     } else if (category === "automoveis") {
       suggestion = `Fotografia comercial de estúdio de uma frota de SUVs executivos pretos de luxo blindados alinhados em frente a uma torre corporativa moderna de vidro em ${loc}, reflexos perfeitos, iluminação dramática, 8k`;
     } else if (category === "usinas_rsu") {
-      suggestion = `Fotografia industrial moderna de uma usina ecológica de reciclagem e processamento sustentável de energia limpa (waste-to-energy) em ${loc}, arquitetura de alta tecnologia, céu limpo, 8k`;
+      suggestion = `Fotografia industrial moderna de uma usina ecológica de reciclagem e processamento sustentável de energia limpa em ${loc}, arquitetura de alta tecnologia, céu limpo, 8k`;
     } else {
       suggestion = `Fotografia executiva moderna em arranha-céu corporativo espelhado em ${loc}, sala de reunião com vista panorâmica para o horizonte da cidade, representando grandes negócios e M&A, iluminação suave e elegante, 8k`;
     }
@@ -112,7 +226,7 @@ export function NewOpportunityModal({
     setGenerationError(null);
   };
 
-  // Disparo da geração de imagem via API (NVIDIA / Flux)
+  // Disparo da geração de imagem via API (NVIDIA)
   const handleGenerateImage = async () => {
     if (!aiPrompt.trim()) {
       handleSuggestPrompt();
@@ -143,7 +257,7 @@ export function NewOpportunityModal({
       }
     } catch (err: any) {
       console.error("Erro na geração de imagem:", err);
-      setGenerationError("Não foi possível gerar a imagem no momento. Verifique o prompt ou utilize o upload manual.");
+      setGenerationError("Não foi possível gerar a imagem no momento. Utilize o upload manual ou tente novamente.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -157,28 +271,11 @@ export function NewOpportunityModal({
     }
   };
 
-  // Handler para upload local de imagem
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setImageUrl(result);
-        setImagePreview(result);
-        setIsImageApproved(true);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   // Handler para upload local de PDF
   const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setPdfFileName(file.name);
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      setPdfFileSize(`${sizeMb} MB`);
+      handleAutoAnalyzeFile(file, "pdf");
     }
   };
 
@@ -239,11 +336,16 @@ export function NewOpportunityModal({
               <Plus className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-display text-xl font-bold text-white">
-                Publicar Nova Oportunidade ou Negócio
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display text-xl font-bold text-white">
+                  Publicar Nova Oportunidade ou Negócio
+                </h2>
+                <Badge variant="gold" size="sm" className="hidden sm:inline-flex gap-1 text-[11px]">
+                  <Sparkles className="h-3 w-3" /> IA Habilitada
+                </Badge>
+              </div>
               <p className="text-xs text-silver mt-0.5">
-                Sua oportunidade será exibida na vitrine pública e no mural fechado de membros associados.
+                Sua oportunidade será exibida na vitrine pública e no mural fechado de associados.
               </p>
             </div>
           </div>
@@ -255,7 +357,87 @@ export function NewOpportunityModal({
           </button>
         </div>
 
-        {/* Formulário */}
+        {/* RECURSO 1: AUTO-PREENCHIMENTO COM IA LENDO PDF OU IMAGEM */}
+        <div className="mt-5 p-4 rounded-2xl bg-gradient-to-r from-gold/15 via-charcoal/80 to-gold/10 border border-gold/40 shadow-inner space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Zap className="h-4 w-4 text-gold" /> Auto-Preenchimento com IA NVIDIA (Zero Esforço)
+              </p>
+              <p className="text-xs text-silver mt-0.5">
+                Já possui um <strong>PDF (Teaser / Deck)</strong> ou <strong>Imagem do ativo</strong>? Carregue o arquivo e a IA preencherá os campos para você em instantes!
+              </p>
+            </div>
+
+            {/* Badge de Plano Pago / 7 Dias de Teste Gratuito */}
+            <div className="shrink-0 flex items-center gap-1.5 bg-obsidian/70 border border-gold/30 px-3 py-1 rounded-full text-xs">
+              <Clock className="h-3.5 w-3.5 text-gold" />
+              <span className="text-silver">
+                Teste Grátis: <strong className="text-gold">{trialDaysLeft} dias restantes</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Botões de Upload para Auto-leitura */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Ler PDF */}
+            <label className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-dashed border-alert/50 bg-charcoal/60 hover:bg-alert/10 cursor-pointer transition-colors text-xs font-semibold text-white group">
+              <FileText className="h-4 w-4 text-alert group-hover:scale-110 transition-transform" />
+              <span>Ler Teaser ou Deck (PDF)</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                disabled={isAnalyzingDoc}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleAutoAnalyzeFile(f, "pdf");
+                }}
+                className="hidden"
+              />
+            </label>
+
+            {/* Ler Imagem / Folder */}
+            <label className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-dashed border-emerald/50 bg-charcoal/60 hover:bg-emerald/10 cursor-pointer transition-colors text-xs font-semibold text-white group">
+              <ImageIcon className="h-4 w-4 text-emerald group-hover:scale-110 transition-transform" />
+              <span>Ler Imagem / Flyer do Ativo</span>
+              <input
+                type="file"
+                accept="image/*"
+                disabled={isAnalyzingDoc}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleAutoAnalyzeFile(f, "image");
+                }}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {/* Indicador de Carregamento da Leitura */}
+          {isAnalyzingDoc && (
+            <div className="flex items-center justify-center gap-2.5 p-3 bg-obsidian/80 rounded-xl border border-gold/40 text-gold text-xs font-medium animate-pulse">
+              <Loader2 className="h-4 w-4 animate-spin text-gold" />
+              <span>A IA NVIDIA Llama 3.2 Vision está lendo o documento e extraindo as informações do negócio...</span>
+            </div>
+          )}
+
+          {/* Feedback de Sucesso */}
+          {docAnalysisSuccess && (
+            <div className="p-3 bg-emerald/10 border border-emerald/30 text-emerald text-xs rounded-xl flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{docAnalysisSuccess}</span>
+            </div>
+          )}
+
+          {/* Feedback de Erro */}
+          {docAnalysisError && (
+            <div className="p-3 bg-alert/10 border border-alert/30 text-alert text-xs rounded-xl">
+              {docAnalysisError}
+            </div>
+          )}
+        </div>
+
+        {/* Formulário com os Campos */}
         <form onSubmit={handleSubmit} className="space-y-6 my-5">
           {/* Seção 1: Dados do Ativo */}
           <div className="space-y-3">
@@ -329,7 +511,7 @@ export function NewOpportunityModal({
                 Localização do Ativo
               </label>
               <Input
-                placeholder="Ex: São Paulo, SP ou Minas Gerais, Brasil"
+                placeholder="Ex: São Paulo, SP ou Minas Gerais, Brasil (Deixe em branco se confidencial)"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="h-10 text-sm"
@@ -539,7 +721,10 @@ export function NewOpportunityModal({
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={handleImageUpload}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleAutoAnalyzeFile(f, "image");
+                    }}
                     className="hidden"
                   />
                 </label>
