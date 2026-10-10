@@ -9,6 +9,7 @@ import { Menu, X, ChevronDown } from "lucide-react";
 
 const navigation = [
   { name: "Como funciona", href: "/como-funciona" },
+  { name: "Oportunidades", href: "/oportunidades" },
   { name: "Para membros", href: "/para-membros" },
   { name: "Benefícios", href: "/beneficios" },
   { name: "Visão", href: "/visao" },

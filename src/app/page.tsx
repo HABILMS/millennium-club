@@ -2,6 +2,7 @@ import { Header } from "@/components/public/Header";
 import { Footer } from "@/components/public/Footer";
 import { Hero } from "@/components/public/Hero";
 import { Vision } from "@/components/public/Vision";
+import { OpportunitiesShowcase } from "@/components/public/OpportunitiesShowcase";
 import { WhoCanJoin } from "@/components/public/WhoCanJoin";
 import { HowItWorks } from "@/components/public/HowItWorks";
 import { Features } from "@/components/public/Features";
@@ -15,6 +16,7 @@ export default function HomePage() {
       <Header />
       <main id="main-content" className="flex-1">
         <Hero />
+        <OpportunitiesShowcase />
         <Vision />
         <WhoCanJoin />
         <HowItWorks />
