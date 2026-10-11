@@ -20,6 +20,7 @@ import {
   CheckCircle,
   FileCheck2,
   Calendar,
+  Clock,
   Sparkles,
   User,
   Phone,
@@ -113,6 +114,17 @@ export function OpportunityDetailModal({
             >
               {opportunity.stage}
             </span>
+
+            {/* Badge de Mandato & Veracidade */}
+            <span className="bg-emerald/90 text-white border border-emerald/50 text-xs font-bold px-3 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+              <ShieldCheck className="h-3.5 w-3.5" /> Mandatário Declarado
+            </span>
+
+            {opportunity.approvalStatus === "pending" && (
+              <span className="bg-amber-500 text-obsidian border border-amber-400 text-xs font-bold px-3 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5 shadow-lg animate-pulse">
+                <Clock className="h-3.5 w-3.5" /> Em Análise Admin
+              </span>
+            )}
           </div>
 
           {/* Título sobreposto ao final da imagem */}

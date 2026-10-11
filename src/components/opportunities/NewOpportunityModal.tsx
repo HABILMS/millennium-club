@@ -103,6 +103,9 @@ export function NewOpportunityModal({
   const [authorWhatsapp, setAuthorWhatsapp] = useState("(11) 98888-0000");
   const [authorEmail, setAuthorEmail] = useState("membro@millenniumclub.com");
 
+  // Compliance de Mandato & Veracidade
+  const [isMandataryDeclared, setIsMandataryDeclared] = useState(false);
+
   // Inicializa a contagem dos 7 dias de teste gratuito
   useEffect(() => {
     try {
@@ -302,6 +305,11 @@ export function NewOpportunityModal({
       return;
     }
 
+    if (!isMandataryDeclared) {
+      alert("É obrigatório declarar formalmente que você é mandatário direto ou representante exclusivo do negócio para submeter.");
+      return;
+    }
+
     const selectedCatObj = opportunityCategories.find((c) => c.id === category) || {
       id: category,
       label: "Oportunidade Estratégica",
@@ -336,6 +344,9 @@ export function NewOpportunityModal({
       },
       createdAt: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }),
       questions: [],
+      // Moderação Administrativa Inicial: Pendente de Checagem
+      approvalStatus: "pending",
+      isMandataryDeclared: true,
     };
 
     onSave(newOpp);
@@ -361,7 +372,7 @@ export function NewOpportunityModal({
                 </Badge>
               </div>
               <p className="text-xs text-silver mt-0.5">
-                Sua oportunidade será exibida na vitrine pública e no mural fechado de associados.
+                Sua oportunidade passará pela checagem de veracidade e comprovação de mandato pelo administrador antes de ser liberada na vitrine pública.
               </p>
             </div>
           </div>
@@ -856,13 +867,42 @@ export function NewOpportunityModal({
             </div>
           </div>
 
+          {/* Seção 4: Declaração de Mandato Exclusivo & Veracidade */}
+          <div className="p-4 rounded-xl bg-gold/10 border border-gold/40 space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                required
+                checked={isMandataryDeclared}
+                onChange={(e) => setIsMandataryDeclared(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gold/50 text-gold focus:ring-gold bg-charcoal shrink-0"
+              />
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-white block">
+                  Declaração de Mandato Exclusivo & Veracidade das Informações *
+                </span>
+                <span className="text-[11px] text-silver leading-relaxed block">
+                  Declaro sob responsabilidade civil e estatutária que sou <strong>mandatário direto</strong> (ou representante credenciado com exclusividade de originação) deste negócio e que todas as informações e documentos anexados são autênticos e auditáveis.
+                </span>
+              </div>
+            </label>
+            <p className="text-[10px] text-text-secondary pl-7">
+              🔒 <strong>Regra de Governança:</strong> As oportunidades ficam inicialmente com status <em>"Pendente de Moderação"</em> e só são liberadas na vitrine pública após a conferência de mandato pelo administrador.
+            </p>
+          </div>
+
           {/* Botões do Rodapé */}
           <div className="pt-4 border-t border-border flex items-center justify-end gap-3">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" variant="gold" className="gap-2 font-semibold">
-              <Check className="h-4 w-4" /> Publicar Oportunidade
+            <Button
+              type="submit"
+              variant="gold"
+              disabled={!isMandataryDeclared}
+              className={cn("gap-2 font-semibold", !isMandataryDeclared && "opacity-60 cursor-not-allowed")}
+            >
+              <Check className="h-4 w-4" /> Submeter para Moderação do Admin
             </Button>
           </div>
         </form>

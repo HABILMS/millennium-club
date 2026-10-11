@@ -1,3 +1,5 @@
+export type OpportunityApprovalStatus = "pending" | "approved" | "rejected";
+
 export interface OpportunityAuthor {
   name: string;
   company: string;
@@ -37,6 +39,13 @@ export interface OpportunityItem {
   author: OpportunityAuthor;
   createdAt: string;
   questions: OpportunityQuestion[];
+  // Compliance & Moderação Administrativa
+  approvalStatus: OpportunityApprovalStatus;
+  isMandataryDeclared?: boolean; // Declaração de mandatário direto / exclusivo
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectionReason?: string;
+  adminNotes?: string;
 }
 
 export const opportunityCategories = [
@@ -83,6 +92,10 @@ export const defaultOpportunities: OpportunityItem[] = [
       email: "patricia@solarinvest.com.br",
     },
     createdAt: "2026-03-10",
+    approvalStatus: "approved",
+    isMandataryDeclared: true,
+    reviewedAt: "2026-03-10 11:30",
+    reviewedBy: "Admin Master",
     questions: [
       {
         id: "q-1",
@@ -123,6 +136,10 @@ export const defaultOpportunities: OpportunityItem[] = [
       email: "carla@ecocarbon.org",
     },
     createdAt: "2026-03-05",
+    approvalStatus: "approved",
+    isMandataryDeclared: true,
+    reviewedAt: "2026-03-05 16:45",
+    reviewedBy: "Admin Master",
     questions: [
       {
         id: "q-2",
@@ -163,6 +180,10 @@ export const defaultOpportunities: OpportunityItem[] = [
       email: "fprado@hotelariagroup.com",
     },
     createdAt: "2026-02-28",
+    approvalStatus: "approved",
+    isMandataryDeclared: true,
+    reviewedAt: "2026-02-28 10:15",
+    reviewedBy: "Admin Master",
     questions: [],
   },
   {
@@ -193,6 +214,10 @@ export const defaultOpportunities: OpportunityItem[] = [
       email: "eduardo@silveiracapital.com",
     },
     createdAt: "2026-03-01",
+    approvalStatus: "approved",
+    isMandataryDeclared: true,
+    reviewedAt: "2026-03-01 14:00",
+    reviewedBy: "Admin Master",
     questions: [],
   },
   {
@@ -220,6 +245,10 @@ export const defaultOpportunities: OpportunityItem[] = [
       email: "carlos@investbr.com.br",
     },
     createdAt: "2026-03-12",
+    approvalStatus: "approved",
+    isMandataryDeclared: true,
+    reviewedAt: "2026-03-12 18:00",
+    reviewedBy: "Admin Master",
     questions: [],
   },
   {
@@ -247,11 +276,15 @@ export const defaultOpportunities: OpportunityItem[] = [
       email: "ricardo@financeira.com.br",
     },
     createdAt: "2026-02-20",
+    approvalStatus: "approved",
+    isMandataryDeclared: true,
+    reviewedAt: "2026-02-20 09:00",
+    reviewedBy: "Admin Master",
     questions: [],
   },
 ];
 
-const STORAGE_KEY = "mc_opportunities_v2";
+const STORAGE_KEY = "mc_opportunities_v3";
 
 export function getStoredOpportunities(): OpportunityItem[] {
   if (typeof window === "undefined") return defaultOpportunities;
@@ -260,7 +293,12 @@ export function getStoredOpportunities(): OpportunityItem[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Assegura que itens legados possuam approvalStatus definido
+        return parsed.map((item) => ({
+          ...item,
+          approvalStatus: item.approvalStatus || "approved",
+          isMandataryDeclared: item.isMandataryDeclared ?? true,
+        }));
       }
     }
   } catch (e) {

@@ -63,8 +63,10 @@ export function OpportunitiesShowcase() {
     }
   };
 
-  // Exibir as 3 principais oportunidades em destaque na home
-  const featuredOpportunities = opportunities.slice(0, 3);
+  // Exibir apenas as oportunidades aprovadas em destaque na home
+  const featuredOpportunities = opportunities
+    .filter((o) => o.approvalStatus === "approved" || !o.approvalStatus)
+    .slice(0, 3);
 
   return (
     <section className="py-20 bg-charcoal/30 border-y border-border/60 relative overflow-hidden">

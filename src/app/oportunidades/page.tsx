@@ -74,6 +74,10 @@ export default function PublicOportunidadesPage() {
 
   const filteredOpportunities = useMemo(() => {
     return opportunities.filter((opp) => {
+      // Regra de Compliance: Apenas oportunidades aprovadas pelo admin aparecem na vitrine pública aberta
+      const isApproved = opp.approvalStatus === "approved" || !opp.approvalStatus;
+      if (!isApproved) return false;
+
       const matchesCategory = selectedCategory === "all" || opp.category === selectedCategory;
       const matchesSearch =
         !searchQuery ||

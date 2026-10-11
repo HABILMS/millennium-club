@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import {
   LayoutDashboard,
   FileText,
+  Briefcase,
   Users,
   Building2,
   Award,
@@ -23,6 +24,7 @@ import {
 const adminNavigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Candidaturas", href: "/admin/candidaturas", icon: FileText },
+  { name: "Oportunidades", href: "/admin/oportunidades", icon: Briefcase },
   { name: "Membros", href: "/admin/membros", icon: Users },
   { name: "Empresas", href: "/admin/empresas", icon: Building2 },
   { name: "Selos", href: "/admin/selos", icon: Award },

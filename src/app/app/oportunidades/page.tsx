@@ -22,6 +22,11 @@ import {
   X,
   Layers,
   Upload,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  User,
 } from "lucide-react";
 import {
   OpportunityItem,
@@ -37,13 +42,14 @@ export default function OportunidadesMemberPage() {
   const [opportunities, setOpportunities] = useState<OpportunityItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"showcase" | "my">("showcase");
   const [activeModalOpp, setActiveModalOpp] = useState<OpportunityItem | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4500);
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   useEffect(() => {
@@ -54,7 +60,10 @@ export default function OportunidadesMemberPage() {
     const updated = [newOpp, ...opportunities];
     setOpportunities(updated);
     saveStoredOpportunities(updated);
-    showToast(`Oportunidade "${newOpp.title}" publicada com sucesso e já visível na galeria pública!`);
+    setViewMode("my");
+    showToast(
+      `✓ Oportunidade "${newOpp.title}" enviada para moderação! O admin fará a checagem de veracidade e mandato exclusivo antes da publicação.`
+    );
   };
 
   const handleAddQuestion = (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
@@ -87,8 +96,35 @@ export default function OportunidadesMemberPage() {
     showToast("Pergunta enviada ao criador do negócio com sucesso!");
   };
 
+  // Minhas oportunidades cadastradas (ou marcadas como pendentes/reprovadas)
+  const myOpportunities = useMemo(() => {
+    return opportunities.filter(
+      (opp) =>
+        opp.id.startsWith("opp-17") || // criadas recentemente nesta sessão
+        opp.approvalStatus === "pending" ||
+        opp.approvalStatus === "rejected" ||
+        opp.author?.name === "Membro Associado"
+    );
+  }, [opportunities]);
+
   const filteredOpportunities = useMemo(() => {
     return opportunities.filter((opp) => {
+      // Se estiver no modo vitrine pública geral, exibe apenas as aprovadas
+      if (viewMode === "showcase") {
+        const isApproved = opp.approvalStatus === "approved" || !opp.approvalStatus;
+        if (!isApproved) return false;
+      }
+
+      // Se estiver na aba "Minhas Oportunidades"
+      if (viewMode === "my") {
+        const isMine =
+          opp.id.startsWith("opp-17") ||
+          opp.approvalStatus === "pending" ||
+          opp.approvalStatus === "rejected" ||
+          opp.author?.name === "Membro Associado";
+        if (!isMine) return false;
+      }
+
       const matchesCategory = selectedCategory === "all" || opp.category === selectedCategory;
       const matchesSearch =
         !searchQuery ||
@@ -100,15 +136,15 @@ export default function OportunidadesMemberPage() {
 
       return matchesCategory && matchesSearch;
     });
-  }, [opportunities, selectedCategory, searchQuery]);
+  }, [opportunities, selectedCategory, searchQuery, viewMode]);
 
   return (
     <div className="space-y-8 animate-fade-up">
       {/* Toast Flutuante */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-charcoal/95 border border-gold/40 text-white px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md animate-fade-in">
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-charcoal/95 border border-gold/40 text-white px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md animate-fade-in max-w-md">
           <CheckCircle className="h-5 w-5 text-emerald shrink-0" />
-          <span className="text-sm font-medium">{toastMessage}</span>
+          <span className="text-xs sm:text-sm font-medium">{toastMessage}</span>
           <button onClick={() => setToastMessage(null)} className="ml-2 text-text-secondary hover:text-white">
             <X className="h-4 w-4" />
           </button>
@@ -127,7 +163,7 @@ export default function OportunidadesMemberPage() {
             Galeria de Oportunidades & Negócios
           </h1>
           <p className="mt-1 text-silver text-sm max-w-2xl">
-            Ativos de alto valor originados pelos membros associados. Como membro aprovado, você pode publicar suas oportunidades para todo o clube e para a vitrine pública aberta.
+            Origine e explore ativos de alto valor com mandato comprovado. Todas as oportunidades passam por checagem de veracidade pelo administrador antes de irem para a vitrine pública.
           </p>
         </div>
 
@@ -141,6 +177,60 @@ export default function OportunidadesMemberPage() {
           </Button>
         </div>
       </div>
+
+      {/* Abas Superiores: Vitrine de Aprovados vs Minhas Oportunidades */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode("showcase")}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2",
+              viewMode === "showcase"
+                ? "bg-gold text-obsidian shadow-md"
+                : "bg-charcoal/60 text-silver hover:text-white hover:bg-charcoal"
+            )}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Vitrine de Ativos Aprovados
+          </button>
+
+          <button
+            onClick={() => setViewMode("my")}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 relative",
+              viewMode === "my"
+                ? "bg-gold text-obsidian shadow-md"
+                : "bg-charcoal/60 text-silver hover:text-white hover:bg-charcoal"
+            )}
+          >
+            <Clock className="h-4 w-4" />
+            Minhas Oportunidades & Moderação
+            {myOpportunities.filter((o) => o.approvalStatus === "pending").length > 0 && (
+              <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+            )}
+          </button>
+        </div>
+
+        {viewMode === "my" && (
+          <p className="text-xs text-amber-300 flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4" />
+            Apenas ativos com mandato de representação são aprovados pelo conselho.
+          </p>
+        )}
+      </div>
+
+      {/* Alerta de Governança na aba "Minhas Oportunidades" */}
+      {viewMode === "my" && (
+        <div className="p-4 rounded-xl bg-gold/10 border border-gold/30 flex items-start gap-3 text-xs text-silver">
+          <ShieldCheck className="h-5 w-5 text-gold shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-white">Governança & Rigor de Originação do Millennium Club</p>
+            <p className="leading-relaxed">
+              Para preservar a segurança de investidores e a exclusividade da rede, cada oportunidade cadastrada é analisada pela equipe de compliance antes da liberação. <strong>Apenas mandatários diretos e representantes exclusivos são autorizados.</strong>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Busca e Categorias */}
       <div className="space-y-4">
@@ -197,14 +287,17 @@ export default function OportunidadesMemberPage() {
           <div className="h-12 w-12 rounded-full bg-charcoal border border-border flex items-center justify-center text-text-secondary mx-auto">
             <Filter className="h-6 w-6" />
           </div>
-          <h3 className="font-display text-lg font-semibold text-white">Nenhuma oportunidade encontrada</h3>
+          <h3 className="font-display text-lg font-semibold text-white">
+            {viewMode === "my"
+              ? "Você ainda não possui oportunidades cadastradas para moderação"
+              : "Nenhuma oportunidade encontrada nesta categoria"}
+          </h3>
           <p className="text-silver text-sm max-w-md mx-auto">
-            Tente buscar com outros termos ou seja o primeiro a publicar um negócio nesta categoria!
+            {viewMode === "my"
+              ? "Clique no botão abaixo para submeter seu primeiro negócio com mandato para análise da diretoria."
+              : "Tente buscar com outros termos ou seja o primeiro a publicar um negócio nesta categoria!"}
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
-            <Button variant="outline" size="sm" onClick={() => { setSelectedCategory("all"); setSearchQuery(""); }}>
-              Limpar filtros
-            </Button>
             <Button variant="gold" size="sm" onClick={() => setIsNewModalOpen(true)}>
               Publicar Oportunidade
             </Button>
@@ -215,7 +308,11 @@ export default function OportunidadesMemberPage() {
           {filteredOpportunities.map((opp) => (
             <Card
               key={opp.id}
-              className="glass border-border/70 hover:border-gold/50 transition-all duration-300 hover:shadow-2xl flex flex-col justify-between overflow-hidden group cursor-pointer"
+              className={cn(
+                "glass border-border/70 hover:border-gold/50 transition-all duration-300 hover:shadow-2xl flex flex-col justify-between overflow-hidden group cursor-pointer",
+                opp.approvalStatus === "pending" && "border-amber-500/40 bg-amber-500/5",
+                opp.approvalStatus === "rejected" && "border-alert/30 bg-alert/5"
+              )}
               onClick={() => setActiveModalOpp(opp)}
             >
               <div>
@@ -235,19 +332,23 @@ export default function OportunidadesMemberPage() {
                     </span>
                   </div>
 
-                  {/* Estágio */}
-                  <div className="absolute top-3 right-3">
-                    <span
-                      className={cn(
-                        "text-[10px] font-bold px-2 py-0.5 rounded-full border backdrop-blur uppercase",
-                        opp.stage === "Ativa" && "bg-emerald/90 text-white border-emerald/50",
-                        opp.stage === "Em Negociação" && "bg-amber-500/90 text-white border-amber-500/50",
-                        opp.stage === "Nova Originação" && "bg-blue-600/90 text-white border-blue-500/50",
-                        opp.stage === "NDA Requerido" && "bg-purple-600/90 text-white border-purple-500/50"
-                      )}
-                    >
-                      {opp.stage}
-                    </span>
+                  {/* Status de Aprovação do Admin */}
+                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                    {opp.approvalStatus === "pending" && (
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-amber-500/90 text-obsidian border-amber-400 backdrop-blur uppercase animate-pulse">
+                        🕒 Em Análise Admin
+                      </span>
+                    )}
+                    {opp.approvalStatus === "approved" && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald/90 text-white border-emerald/50 backdrop-blur uppercase">
+                        ✓ Aprovada
+                      </span>
+                    )}
+                    {opp.approvalStatus === "rejected" && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-alert/90 text-white border-alert/50 backdrop-blur uppercase">
+                        ✕ Reprovada
+                      </span>
+                    )}
                   </div>
 
                   {/* Volume Estimado */}
@@ -273,6 +374,14 @@ export default function OportunidadesMemberPage() {
                   <p className="text-xs text-silver line-clamp-2 leading-relaxed">
                     {opp.summary}
                   </p>
+
+                  {/* Feedback de Reprovação (se houver) */}
+                  {opp.approvalStatus === "rejected" && opp.rejectionReason && (
+                    <div className="p-2 rounded-lg bg-alert/15 border border-alert/30 text-[11px] text-alert flex items-start gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span>{opp.rejectionReason}</span>
+                    </div>
+                  )}
 
                   {/* Autor Devidamente Identificado */}
                   <div className="pt-3 border-t border-border/50 flex items-center justify-between">
@@ -308,7 +417,7 @@ export default function OportunidadesMemberPage() {
                     setActiveModalOpp(opp);
                   }}
                 >
-                  Ver Fotos, PDF & Chat com Criador <ArrowUpRight className="h-3.5 w-3.5" />
+                  Ver Fotos, Teaser & Chat com Criador <ArrowUpRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </Card>
