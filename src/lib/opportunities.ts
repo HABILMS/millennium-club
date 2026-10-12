@@ -315,3 +315,195 @@ export function saveStoredOpportunities(items: OpportunityItem[]): void {
     console.warn("Falha ao salvar oportunidades no localStorage:", e);
   }
 }
+
+/** Busca oportunidades aprovadas (ou com filtros) da API do Supabase */
+export async function fetchOpportunities(options?: {
+  category?: string;
+  status?: string;
+  authorEmail?: string;
+}): Promise<OpportunityItem[]> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.category && options.category !== "all") params.set("category", options.category);
+    if (options?.status) params.set("status", options.status);
+    if (options?.authorEmail) params.set("authorEmail", options.authorEmail);
+
+    const res = await fetch(`/api/opportunities?${params.toString()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data.opportunities)) {
+      return data.opportunities;
+    }
+  } catch (err) {
+    console.warn("Falha ao buscar oportunidades via API, usando fallback local:", err);
+  }
+  return getStoredOpportunities();
+}
+
+/** Busca todas as oportunidades para a mesa de moderação administrativa */
+export async function fetchAdminOpportunities(): Promise<OpportunityItem[]> {
+  try {
+    const res = await fetch("/api/admin/opportunities", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data.opportunities)) {
+      return data.opportunities;
+    }
+  } catch (err) {
+    console.warn("Falha ao buscar oportunidades do admin via API:", err);
+  }
+  return getStoredOpportunities();
+}
+
+/** Cria uma nova oportunidade e envia para a fila de moderação no Supabase */
+export async function createOpportunity(item: Partial<OpportunityItem>): Promise<OpportunityItem> {
+  try {
+    const res = await fetch("/api/opportunities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Erro HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data.opportunity) {
+      // Sincroniza localmente para conveniência
+      const current = getStoredOpportunities();
+      saveStoredOpportunities([data.opportunity, ...current]);
+      return data.opportunity;
+    }
+  } catch (err) {
+    console.warn("Falha ao salvar na API, persistindo em localStorage:", err);
+  }
+
+  // Fallback local se a API estiver offline
+  const localItem: OpportunityItem = {
+    id: `opp-local-${Date.now()}`,
+    title: item.title || "Sem título",
+    category: item.category || "all",
+    categoryLabel: item.categoryLabel || "Geral",
+    categoryIcon: item.categoryIcon || "💎",
+    volume: item.volume || "Sob Consulta",
+    location: item.location || "Brasil",
+    stage: item.stage || "Ativa",
+    summary: item.summary || "",
+    details: item.details || item.summary || "",
+    highlights: item.highlights || [],
+    imageUrl: item.imageUrl || "https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=1200&q=80",
+    galleryImages: item.galleryImages || [],
+    documentPdfName: item.documentPdfName,
+    documentPdfSize: item.documentPdfSize,
+    documentPdfUrl: item.documentPdfUrl,
+    author: item.author || {
+      name: "Membro Millennium",
+      company: "Clube de Negócios",
+      jobTitle: "Membro",
+      badge: "Membro Verificado",
+    },
+    createdAt: new Date().toISOString().split("T")[0],
+    questions: [],
+    approvalStatus: "pending",
+    isMandataryDeclared: true,
+  };
+  const current = getStoredOpportunities();
+  saveStoredOpportunities([localItem, ...current]);
+  return localItem;
+}
+
+/** Atualiza status de moderação no Supabase via PATCH */
+export async function updateAdminOpportunityStatus(
+  id: string,
+  approvalStatus: OpportunityApprovalStatus,
+  options?: { rejectionReason?: string; adminNotes?: string; reviewedBy?: string }
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/admin/opportunities", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id,
+        approvalStatus,
+        rejectionReason: options?.rejectionReason,
+        adminNotes: options?.adminNotes,
+        reviewedBy: options?.reviewedBy || "Admin Master",
+      }),
+    });
+    if (res.ok) {
+      // Sincroniza localmente
+      const current = getStoredOpportunities();
+      const updated = current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              approvalStatus,
+              rejectionReason: options?.rejectionReason ?? item.rejectionReason,
+              adminNotes: options?.adminNotes ?? item.adminNotes,
+              reviewedAt: new Date().toISOString(),
+              reviewedBy: options?.reviewedBy || "Admin Master",
+            }
+          : item
+      );
+      saveStoredOpportunities(updated);
+      return true;
+    }
+  } catch (err) {
+    console.warn("Falha no update da API de moderação:", err);
+  }
+
+  // Fallback local
+  const current = getStoredOpportunities();
+  const updated = current.map((item) =>
+    item.id === id
+      ? {
+          ...item,
+          approvalStatus,
+          rejectionReason: options?.rejectionReason ?? item.rejectionReason,
+          adminNotes: options?.adminNotes ?? item.adminNotes,
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: options?.reviewedBy || "Admin Master",
+        }
+      : item
+  );
+  saveStoredOpportunities(updated);
+  return true;
+}
+
+/** Envia pergunta ao criador da oportunidade (chat) */
+export async function sendOpportunityQuestion(
+  opportunityId: string,
+  senderName: string,
+  senderContact: string,
+  content: string
+): Promise<OpportunityQuestion | null> {
+  try {
+    const res = await fetch("/api/opportunities/question", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ opportunityId, senderName, senderContact, content }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.question;
+    }
+  } catch (err) {
+    console.warn("Falha ao enviar pergunta via API:", err);
+  }
+
+  // Fallback local
+  const current = getStoredOpportunities();
+  const newQ: OpportunityQuestion = {
+    id: `q-${Date.now()}`,
+    senderName,
+    senderContact,
+    content,
+    sentAt: new Date().toISOString(),
+  };
+  const updated = current.map((item) =>
+    item.id === opportunityId ? { ...item, questions: [...item.questions, newQ] } : item
+  );
+  saveStoredOpportunities(updated);
+  return newQ;
+}
+

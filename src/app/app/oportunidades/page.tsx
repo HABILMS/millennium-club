@@ -34,6 +34,9 @@ import {
   opportunityCategories,
   getStoredOpportunities,
   saveStoredOpportunities,
+  fetchOpportunities,
+  createOpportunity,
+  sendOpportunityQuestion,
 } from "@/lib/opportunities";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 import { NewOpportunityModal } from "@/components/opportunities/NewOpportunityModal";
@@ -53,32 +56,51 @@ export default function OportunidadesMemberPage() {
   };
 
   useEffect(() => {
+    // 1. Carrega dados em cache local
     setOpportunities(getStoredOpportunities());
+
+    // 2. Busca dados em tempo real da API do Supabase
+    fetchOpportunities({ status: "all" }).then((data) => {
+      if (data && data.length > 0) {
+        setOpportunities(data);
+      }
+    });
   }, []);
 
-  const handleCreateOpportunity = (newOpp: OpportunityItem) => {
+  const handleCreateOpportunity = async (newOpp: OpportunityItem) => {
+    // Atualização otimista
     const updated = [newOpp, ...opportunities];
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
     setViewMode("my");
     showToast(
       `✓ Oportunidade "${newOpp.title}" enviada para moderação! O admin fará a checagem de veracidade e mandato exclusivo antes da publicação.`
     );
+
+    // Persistência real no banco Supabase
+    try {
+      const saved = await createOpportunity(newOpp);
+      if (saved && saved.id !== newOpp.id) {
+        setOpportunities((prev) => [saved, ...prev.filter((o) => o.id !== newOpp.id)]);
+      }
+    } catch (err) {
+      console.error("Falha ao salvar oportunidade no banco:", err);
+    }
   };
 
-  const handleAddQuestion = (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
+  const handleAddQuestion = async (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
+    const newQuestion: OpportunityQuestion = {
+      id: `q-${Date.now()}`,
+      sentAt: new Date().toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      ...question,
+    };
+
     const updated = opportunities.map((opp) => {
       if (opp.id === oppId) {
-        const newQuestion: OpportunityQuestion = {
-          id: `q-${Date.now()}`,
-          sentAt: new Date().toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          ...question,
-        };
         return {
           ...opp,
           questions: [newQuestion, ...(opp.questions || [])],
@@ -88,12 +110,13 @@ export default function OportunidadesMemberPage() {
     });
 
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
-
     if (activeModalOpp && activeModalOpp.id === oppId) {
       setActiveModalOpp(updated.find((o) => o.id === oppId) || null);
     }
     showToast("Pergunta enviada ao criador do negócio com sucesso!");
+
+    // Persistência no banco Supabase
+    await sendOpportunityQuestion(oppId, question.senderName, question.senderContact, question.content);
   };
 
   // Minhas oportunidades cadastradas (ou marcadas como pendentes/reprovadas)

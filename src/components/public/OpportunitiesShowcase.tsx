@@ -23,6 +23,8 @@ import {
   OpportunityQuestion,
   getStoredOpportunities,
   saveStoredOpportunities,
+  fetchOpportunities,
+  sendOpportunityQuestion,
 } from "@/lib/opportunities";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 
@@ -31,22 +33,30 @@ export function OpportunitiesShowcase() {
   const [selectedOpp, setSelectedOpp] = useState<OpportunityItem | null>(null);
 
   useEffect(() => {
+    // Carrega instantaneamente dados locais
     setOpportunities(getStoredOpportunities());
+    // Busca dados em tempo real da API do Supabase
+    fetchOpportunities({ status: "approved" }).then((data) => {
+      if (data && data.length > 0) {
+        setOpportunities(data);
+      }
+    });
   }, []);
 
-  const handleAddQuestion = (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
+  const handleAddQuestion = async (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
+    const newQuestion: OpportunityQuestion = {
+      id: `q-${Date.now()}`,
+      sentAt: new Date().toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      ...question,
+    };
+
     const updated = opportunities.map((opp) => {
       if (opp.id === oppId) {
-        const newQuestion: OpportunityQuestion = {
-          id: `q-${Date.now()}`,
-          sentAt: new Date().toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          ...question,
-        };
         return {
           ...opp,
           questions: [newQuestion, ...(opp.questions || [])],
@@ -56,11 +66,11 @@ export function OpportunitiesShowcase() {
     });
 
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
-
     if (selectedOpp && selectedOpp.id === oppId) {
       setSelectedOpp(updated.find((o) => o.id === oppId) || null);
     }
+
+    await sendOpportunityQuestion(oppId, question.senderName, question.senderContact, question.content);
   };
 
   // Exibir apenas as oportunidades aprovadas em destaque na home

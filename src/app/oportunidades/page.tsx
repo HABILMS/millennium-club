@@ -30,6 +30,8 @@ import {
   opportunityCategories,
   getStoredOpportunities,
   saveStoredOpportunities,
+  fetchOpportunities,
+  sendOpportunityQuestion,
 } from "@/lib/opportunities";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 
@@ -38,24 +40,37 @@ export default function PublicOportunidadesPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOpp, setSelectedOpp] = useState<OpportunityItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Carrega dados em cache local para renderização instantânea
     setOpportunities(getStoredOpportunities());
+
+    // 2. Busca dados em tempo real da API do Supabase (apenas oportunidades aprovadas)
+    fetchOpportunities({ status: "approved" })
+      .then((data) => {
+        if (data && data.length > 0) {
+          setOpportunities(data);
+        }
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const handleAddQuestion = (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
+  const handleAddQuestion = async (oppId: string, question: Omit<OpportunityQuestion, "id" | "sentAt">) => {
+    // Atualização otimista
+    const newQuestion: OpportunityQuestion = {
+      id: `q-${Date.now()}`,
+      sentAt: new Date().toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      ...question,
+    };
+
     const updated = opportunities.map((opp) => {
       if (opp.id === oppId) {
-        const newQuestion: OpportunityQuestion = {
-          id: `q-${Date.now()}`,
-          sentAt: new Date().toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          ...question,
-        };
         return {
           ...opp,
           questions: [newQuestion, ...(opp.questions || [])],
@@ -65,11 +80,12 @@ export default function PublicOportunidadesPage() {
     });
 
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
-
     if (selectedOpp && selectedOpp.id === oppId) {
       setSelectedOpp(updated.find((o) => o.id === oppId) || null);
     }
+
+    // Persistência no banco Supabase
+    await sendOpportunityQuestion(oppId, question.senderName, question.senderContact, question.content);
   };
 
   const filteredOpportunities = useMemo(() => {

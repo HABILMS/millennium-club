@@ -35,6 +35,8 @@ import {
   getStoredOpportunities,
   saveStoredOpportunities,
   opportunityCategories,
+  fetchAdminOpportunities,
+  updateAdminOpportunityStatus,
 } from "@/lib/opportunities";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 
@@ -53,7 +55,15 @@ export default function AdminOportunidadesPage() {
   };
 
   useEffect(() => {
+    // 1. Carrega dados em cache local
     setOpportunities(getStoredOpportunities());
+
+    // 2. Busca todas as oportunidades em tempo real do banco Supabase
+    fetchAdminOpportunities().then((data) => {
+      if (data && data.length > 0) {
+        setOpportunities(data);
+      }
+    });
   }, []);
 
   // Estatísticas rápidas
@@ -71,7 +81,7 @@ export default function AdminOportunidadesPage() {
   );
 
   // Ação 1: Aprovar Oportunidade
-  const handleApprove = (id: string) => {
+  const handleApprove = async (id: string) => {
     const now = new Date().toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
@@ -80,6 +90,7 @@ export default function AdminOportunidadesPage() {
       minute: "2-digit",
     });
 
+    // Atualização otimista
     const updated = opportunities.map((opp) => {
       if (opp.id === id) {
         return {
@@ -94,11 +105,13 @@ export default function AdminOportunidadesPage() {
     });
 
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
     showToast("✓ Oportunidade aprovada e liberada na vitrine pública com sucesso!");
     if (selectedOpp && selectedOpp.id === id) {
       setSelectedOpp(null);
     }
+
+    // Persistência no banco Supabase
+    await updateAdminOpportunityStatus(id, "approved", { reviewedBy: "Admin Master" });
   };
 
   // Ação 2: Abrir modal para reprovar com justificativa
@@ -110,7 +123,7 @@ export default function AdminOportunidadesPage() {
   };
 
   // Confirmação de Reprovação
-  const handleConfirmReject = () => {
+  const handleConfirmReject = async () => {
     if (!rejectingOpp) return;
     const now = new Date().toLocaleDateString("pt-BR", {
       day: "2-digit",
@@ -120,43 +133,59 @@ export default function AdminOportunidadesPage() {
       minute: "2-digit",
     });
 
+    const targetId = rejectingOpp.id;
+    const reason = rejectionReasonInput.trim() || "Reprovado pelo administrador.";
+
+    // Atualização otimista
     const updated = opportunities.map((opp) => {
-      if (opp.id === rejectingOpp.id) {
+      if (opp.id === targetId) {
         return {
           ...opp,
           approvalStatus: "rejected" as const,
           reviewedAt: now,
           reviewedBy: "Admin Master",
-          rejectionReason: rejectionReasonInput.trim() || "Reprovado pelo administrador.",
+          rejectionReason: reason,
         };
       }
       return opp;
     });
 
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
     setRejectingOpp(null);
     showToast("Oportunidade reprovada e retirada da vitrine pública.");
-    if (selectedOpp && selectedOpp.id === rejectingOpp.id) {
+    if (selectedOpp && selectedOpp.id === targetId) {
       setSelectedOpp(null);
     }
+
+    // Persistência no banco Supabase
+    await updateAdminOpportunityStatus(targetId, "rejected", {
+      rejectionReason: reason,
+      reviewedBy: "Admin Master",
+    });
   };
 
   // Ação 3: Solicitar Documento de Mandato ao Membro
-  const handleRequestMandate = (id: string) => {
+  const handleRequestMandate = async (id: string) => {
+    const note = "Pendente: Administrador solicitou contrato formal de mandato com exclusividade assinado pelo proprietário.";
+
     const updated = opportunities.map((opp) => {
       if (opp.id === id) {
         return {
           ...opp,
-          adminNotes: "Pendente: Administrador solicitou contrato formal de mandato com exclusividade assinado pelo proprietário.",
+          adminNotes: note,
         };
       }
       return opp;
     });
 
     setOpportunities(updated);
-    saveStoredOpportunities(updated);
     showToast("Solicitação de mandato e comprovação registrada para o membro.");
+
+    // Persistência no banco Supabase
+    await updateAdminOpportunityStatus(id, "pending", {
+      adminNotes: note,
+      reviewedBy: "Admin Master",
+    });
   };
 
   // Filtragem da lista

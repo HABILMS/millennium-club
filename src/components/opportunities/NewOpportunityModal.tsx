@@ -94,6 +94,7 @@ export function NewOpportunityModal({
   // Documento Anexo
   const [pdfFileName, setPdfFileName] = useState("Teaser_Executivo_Investimento.pdf");
   const [pdfFileSize, setPdfFileSize] = useState("3.2 MB");
+  const [pdfFileUrl, setPdfFileUrl] = useState<string>("#");
 
   // Autor
   const [authorName, setAuthorName] = useState(defaultAuthorName);
@@ -170,6 +171,25 @@ export function NewOpportunityModal({
         setIsImageApproved(true);
         payload.image = compressedBase64;
       }
+
+      // Inicia upload real em background para o Supabase Storage via /api/upload
+      try {
+        const uploadForm = new FormData();
+        uploadForm.append("file", file);
+        uploadForm.append("folder", fileType === "document" ? "documents" : "images");
+        fetch("/api/upload", { method: "POST", body: uploadForm })
+          .then((r) => r.json())
+          .then((upData) => {
+            if (upData.url && upData.url !== "#") {
+              if (fileType === "document") {
+                setPdfFileUrl(upData.url);
+              } else {
+                setImageUrl(upData.url);
+              }
+            }
+          })
+          .catch(() => {});
+      } catch (e) {}
 
       // Envia payload leve (texto Markdown ou imagem comprimida) para a API
       const res = await fetch("/api/analyze-document", {
@@ -333,7 +353,7 @@ export function NewOpportunityModal({
       imageUrl: imageUrl || "https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=1200&q=80",
       documentPdfName: pdfFileName,
       documentPdfSize: pdfFileSize,
-      documentPdfUrl: "#",
+      documentPdfUrl: pdfFileUrl || "#",
       author: {
         name: authorName.trim() || "Membro Associado",
         company: authorCompany.trim() || "Empresa Membro",
