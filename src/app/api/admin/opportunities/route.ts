@@ -43,7 +43,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { id, approvalStatus, rejectionReason, adminNotes, reviewedBy } = body;
+    const { id, approvalStatus, rejectionReason, adminNotes, reviewedBy, validityDays } = body;
 
     if (!id || !approvalStatus) {
       return NextResponse.json(
@@ -59,6 +59,13 @@ export async function PATCH(request: Request) {
       reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    if (approvalStatus === "approved") {
+      const days = Math.max(20, Number(validityDays) || 20);
+      updatePayload.validity_days = days;
+      updatePayload.expires_at = new Date(Date.now() + days * 86400000).toISOString();
+      updatePayload.last_renewed_at = new Date().toISOString();
+    }
 
     if (rejectionReason !== undefined) updatePayload.rejection_reason = rejectionReason;
     if (adminNotes !== undefined) updatePayload.admin_notes = adminNotes;

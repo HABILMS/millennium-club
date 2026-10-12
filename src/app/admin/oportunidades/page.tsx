@@ -29,6 +29,8 @@ import {
   Sparkles,
   ExternalLink,
   MessageSquare,
+  Calendar,
+  RotateCcw,
 } from "lucide-react";
 import {
   OpportunityItem,
@@ -37,6 +39,7 @@ import {
   opportunityCategories,
   fetchAdminOpportunities,
   updateAdminOpportunityStatus,
+  renewOpportunity,
 } from "@/lib/opportunities";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 
@@ -47,6 +50,8 @@ export default function AdminOportunidadesPage() {
   const [selectedOpp, setSelectedOpp] = useState<OpportunityItem | null>(null);
   const [rejectingOpp, setRejectingOpp] = useState<OpportunityItem | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState("");
+  const [approvingOpp, setApprovingOpp] = useState<OpportunityItem | null>(null);
+  const [approvalValidityDays, setApprovalValidityDays] = useState<number>(20);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -80,8 +85,17 @@ export default function AdminOportunidadesPage() {
     [opportunities]
   );
 
-  // Ação 1: Aprovar Oportunidade
-  const handleApprove = async (id: string) => {
+  // Ação 1: Abrir Modal de Aprovação com Configuração de Prazo
+  const handleOpenApprove = (opp: OpportunityItem) => {
+    setApprovingOpp(opp);
+    setApprovalValidityDays(Math.max(20, opp.validityDays || 20));
+  };
+
+  // Confirmação de Aprovação
+  const handleConfirmApprove = async () => {
+    if (!approvingOpp) return;
+    const days = Math.max(20, Number(approvalValidityDays) || 20);
+    const id = approvingOpp.id;
     const now = new Date().toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
@@ -89,6 +103,7 @@ export default function AdminOportunidadesPage() {
       hour: "2-digit",
       minute: "2-digit",
     });
+    const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
 
     // Atualização otimista
     const updated = opportunities.map((opp) => {
@@ -99,19 +114,47 @@ export default function AdminOportunidadesPage() {
           reviewedAt: now,
           reviewedBy: "Admin Master",
           rejectionReason: undefined,
+          validityDays: days,
+          expiresAt: expiresAt,
+          lastRenewedAt: new Date().toISOString(),
         };
       }
       return opp;
     });
 
     setOpportunities(updated);
-    showToast("✓ Oportunidade aprovada e liberada na vitrine pública com sucesso!");
+    setApprovingOpp(null);
+    showToast(`✓ Oportunidade aprovada e liberada na vitrine pública com ${days} dias de validade!`);
     if (selectedOpp && selectedOpp.id === id) {
       setSelectedOpp(null);
     }
 
     // Persistência no banco Supabase
-    await updateAdminOpportunityStatus(id, "approved", { reviewedBy: "Admin Master" });
+    await updateAdminOpportunityStatus(id, "approved", {
+      reviewedBy: "Admin Master",
+      validityDays: days,
+    });
+  };
+
+  // Ação Rápida: Renovar Validade (+20 dias)
+  const handleRenewByAdmin = async (id: string, days = 20) => {
+    const validDays = Math.max(20, days);
+    const expiresAt = new Date(Date.now() + validDays * 86400000).toISOString();
+    const updated = opportunities.map((opp) => {
+      if (opp.id === id) {
+        return {
+          ...opp,
+          approvalStatus: "approved" as const,
+          validityDays: validDays,
+          expiresAt: expiresAt,
+          lastRenewedAt: new Date().toISOString(),
+        };
+      }
+      return opp;
+    });
+    setOpportunities(updated);
+    showToast(`✓ Validade do negócio renovada por mais ${validDays} dias!`);
+    await renewOpportunity(id, validDays);
   };
 
   // Ação 2: Abrir modal para reprovar com justificativa
@@ -454,6 +497,27 @@ export default function AdminOportunidadesPage() {
                             <XCircle className="h-3 w-3" /> Reprovada
                           </span>
                         )}
+
+                        {/* Indicador de Validade */}
+                        {opp.approvalStatus === "approved" && opp.expiresAt && (() => {
+                          const daysLeft = Math.ceil((new Date(opp.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                          const isExpired = daysLeft <= 0;
+                          return (
+                            <span
+                              className={cn(
+                                "text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border",
+                                isExpired
+                                  ? "bg-alert/20 text-alert border-alert/40"
+                                  : daysLeft <= 5
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
+                                  : "bg-gold/15 text-gold border-gold/30"
+                              )}
+                            >
+                              <Calendar className="h-3 w-3" />
+                              {isExpired ? "Validade Vencida" : `${daysLeft}d restantes`}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <h3 className="font-display font-bold text-white text-base truncate">
@@ -537,10 +601,22 @@ export default function AdminOportunidadesPage() {
                         <Button
                           variant="gold"
                           size="sm"
-                          onClick={() => handleApprove(opp.id)}
+                          onClick={() => handleOpenApprove(opp)}
                           className="h-8 text-xs font-bold gap-1 bg-emerald hover:bg-emerald/90 text-white border-none"
                         >
                           <Check className="h-3.5 w-3.5" /> Aprovar & Liberar
+                        </Button>
+                      )}
+
+                      {opp.approvalStatus === "approved" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRenewByAdmin(opp.id, 20)}
+                          className="h-8 text-xs font-semibold gap-1 border-gold/40 text-gold hover:bg-gold/10"
+                          title="Estender validade por +20 dias"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" /> +20 Dias
                         </Button>
                       )}
 
@@ -624,6 +700,98 @@ export default function AdminOportunidadesPage() {
                 className="bg-alert/20 border-alert text-alert hover:bg-alert/30 font-bold"
               >
                 Confirmar Reprovação
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Aprovação com Configuração de Prazo (Mínimo 20 dias) */}
+      {approvingOpp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian/85 backdrop-blur-md animate-fade-in">
+          <div className="glass rounded-2xl w-full max-w-lg border border-emerald/50 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2 text-emerald">
+                <CheckCircle2 className="h-5 w-5" />
+                <h3 className="font-display font-bold text-white text-lg">Aprovar & Liberar Oportunidade</h3>
+              </div>
+              <button
+                onClick={() => setApprovingOpp(null)}
+                className="p-1 text-text-secondary hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-white">
+                {approvingOpp.title}
+              </p>
+              <p className="text-xs text-silver">
+                Autor: <strong className="text-white">{approvingOpp.author?.name}</strong> • Volume: <strong className="text-gold">{approvingOpp.volume}</strong>
+              </p>
+              <p className="text-xs text-silver">
+                Ao aprovar, esta oportunidade terá o mandato auditado e será publicada na vitrine pública com proteção de confidencialidade (Teaser Cego & NDA intermediado).
+              </p>
+            </div>
+
+            {/* Configuração de Prazo de Validade (Mínimo 20 dias) */}
+            <div className="space-y-2 bg-charcoal/50 p-4 rounded-xl border border-border">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-white uppercase tracking-wider">
+                  Prazo de Validade na Vitrine
+                </label>
+                <span className="text-gold text-[11px] font-semibold bg-gold/10 px-2 py-0.5 rounded border border-gold/30">
+                  Mínimo obrigatório: 20 dias
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={20}
+                  value={approvalValidityDays}
+                  onChange={(e) => setApprovalValidityDays(Math.max(20, parseInt(e.target.value) || 20))}
+                  className="h-10 text-sm font-bold bg-charcoal border-border text-white w-28 text-center"
+                />
+                <span className="text-xs text-silver">dias corridos até expiração automática</span>
+              </div>
+
+              {/* Botões Rápidos de Prazo */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {[20, 30, 45, 60, 90].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setApprovalValidityDays(d)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all",
+                      approvalValidityDays === d
+                        ? "bg-emerald text-white border-emerald shadow"
+                        : "bg-charcoal text-silver border-border hover:text-white hover:border-gold/30"
+                    )}
+                  >
+                    {d} dias {d === 20 && "(Mínimo)"}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-[11px] text-text-secondary pt-1">
+                Após este período, a oportunidade expira automaticamente da vitrine até que o proprietário faça a renovação de disponibilidade em 1-clique.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setApprovingOpp(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="gold"
+                size="sm"
+                onClick={handleConfirmApprove}
+                className="bg-emerald hover:bg-emerald/90 text-white font-bold gap-1.5"
+              >
+                <Check className="h-4 w-4" /> Confirmar Aprovação ({approvalValidityDays} dias)
               </Button>
             </div>
           </div>

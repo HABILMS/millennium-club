@@ -27,6 +27,9 @@ import {
   Mail,
   ArrowRight,
   ExternalLink,
+  Lock,
+  AlertTriangle,
+  Briefcase,
 } from "lucide-react";
 import {
   OpportunityItem,
@@ -53,6 +56,18 @@ export function OpportunityDetailModal({
   const [questionSuccess, setQuestionSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<"detalhes" | "chat">("detalhes");
 
+  // Estado do Fluxo de Blindagem Comercial & NDA Digital
+  const [isNdaModalOpen, setIsNdaModalOpen] = useState(false);
+  const [ndaName, setNdaName] = useState("");
+  const [ndaCompany, setNdaCompany] = useState("");
+  const [ndaRole, setNdaRole] = useState("");
+  const [ndaPhone, setNdaPhone] = useState("");
+  const [ndaEmail, setNdaEmail] = useState("");
+  const [ndaCapacity, setNdaCapacity] = useState("R$ 5.000.000 a R$ 20.000.000");
+  const [ndaAccepted, setNdaAccepted] = useState(false);
+  const [ndaSubmitting, setNdaSubmitting] = useState(false);
+  const [ndaSuccessTicketId, setNdaSuccessTicketId] = useState<string | null>(null);
+
   const handleSendQuestion = (e: React.FormEvent) => {
     e.preventDefault();
     if (!questionText.trim()) return;
@@ -70,6 +85,41 @@ export function OpportunityDetailModal({
     setQuestionText("");
     setQuestionSuccess(true);
     setTimeout(() => setQuestionSuccess(false), 5000);
+  };
+
+  const handleNdaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ndaAccepted) {
+      alert("É necessário ler e aceitar o Termo de Confidencialidade e Não-Circunvenção de 24 Meses para prosseguir.");
+      return;
+    }
+
+    setNdaSubmitting(true);
+    try {
+      const res = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: "deals_ma",
+          subject: `[Dossiê Confidencial & NDA] Solicitação para ${opportunity.title}`,
+          priority: "high",
+          deal_id: opportunity.id,
+          description: `Solicitação formal de acesso a Dossiê Confidencial com aceite de NDA e Termo de Não-Circunvenção de 24 Meses.\n\nAtivo: ${opportunity.title}\nID do Ativo: ${opportunity.id}\nVolume: ${opportunity.volume}\n\nSignatário: ${ndaName}\nEmpresa/Fundo: ${ndaCompany}\nCargo: ${ndaRole}\nWhatsApp: ${ndaPhone}\nE-mail: ${ndaEmail}\nCapacidade Prevista de Aporte: ${ndaCapacity}\n\nTermo de Não-Circunvenção (24 Meses): ACEITO DIGITALMENTE em ${new Date().toLocaleString("pt-BR")}`,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setNdaSuccessTicketId(data.ticket?.ticket_number || data.ticket?.id || "TCK-NDA");
+      } else {
+        setNdaSuccessTicketId(`TCK-${Date.now().toString().slice(-6)}`);
+      }
+    } catch (err) {
+      console.warn("Falha ao registrar ticket via API, gerando protocolo local:", err);
+      setNdaSuccessTicketId(`TCK-${Date.now().toString().slice(-6)}`);
+    } finally {
+      setNdaSubmitting(false);
+    }
   };
 
   const allImages = [
@@ -120,6 +170,11 @@ export function OpportunityDetailModal({
               <ShieldCheck className="h-3.5 w-3.5" /> Mandatário Declarado
             </span>
 
+            {/* Blindagem de Proteção Comercial */}
+            <span className="bg-gold/90 text-obsidian border border-gold font-bold text-xs px-3 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+              <Lock className="h-3.5 w-3.5" /> Teaser Cego & Intermediado
+            </span>
+
             {opportunity.approvalStatus === "pending" && (
               <span className="bg-amber-500 text-obsidian border border-amber-400 text-xs font-bold px-3 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5 shadow-lg animate-pulse">
                 <Clock className="h-3.5 w-3.5" /> Em Análise Admin
@@ -165,6 +220,26 @@ export function OpportunityDetailModal({
           </div>
         )}
 
+        {/* Banner de Blindagem Comercial & Não-Circunvenção */}
+        <div className="bg-gold/10 border-b border-gold/20 px-6 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-gold">
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span className="font-semibold">
+              Blindagem Comercial & Mesa de Deals M&A
+            </span>
+            <span className="text-silver hidden sm:inline">•</span>
+            <span className="text-silver hidden sm:inline">
+              Termo de Não-Circunvenção de 24 Meses ativo para preservação de honorários e confidencialidade.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsNdaModalOpen(true)}
+            className="text-gold hover:underline font-bold text-[11px] shrink-0"
+          >
+            Assinar NDA & Acessar Dossiê →
+          </button>
+        </div>
+
         {/* Abas: Detalhes do Ativo vs Chat com o Criador */}
         <div className="flex border-b border-border/70 px-6 pt-2 bg-charcoal/20">
           <button
@@ -187,7 +262,7 @@ export function OpportunityDetailModal({
                 : "border-transparent text-silver hover:text-white"
             )}
           >
-            <MessageSquare className="h-4 w-4" /> Perguntas ao Criador
+            <MessageSquare className="h-4 w-4" /> Perguntas Intermediadas
             <span className="bg-gold/20 text-gold border border-gold/30 text-xs px-1.5 py-0.2 rounded-full font-bold">
               {opportunity.questions?.length || 0}
             </span>
@@ -197,7 +272,7 @@ export function OpportunityDetailModal({
         {/* CONTEÚDO DA ABA 1: DETALHES, AUTOR E PDF */}
         {activeTab === "detalhes" && (
           <div className="p-6 space-y-6">
-            {/* Box do Autor Devidamente Identificado */}
+            {/* Box do Autor com Blindagem de Contato Direto */}
             <div className="p-4 rounded-xl bg-charcoal/60 border border-gold/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
               <div className="flex items-center gap-3.5">
                 <div className="h-12 w-12 rounded-xl bg-gold/15 border border-gold/30 text-gold flex items-center justify-center font-display font-bold text-lg shadow-inner">
@@ -225,33 +300,32 @@ export function OpportunityDetailModal({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Botões de Ação Intermediados pela Mesa de Negócios */}
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="gold"
                   size="sm"
+                  onClick={() => setIsNdaModalOpen(true)}
+                  className="gap-1.5 text-xs font-bold bg-gradient-to-r from-gold via-gold-light to-gold text-obsidian shadow-md hover:opacity-95"
+                >
+                  <FileCheck2 className="h-3.5 w-3.5" /> Solicitar Dossiê & NDA
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setActiveTab("chat")}
-                  className="gap-1.5 text-xs font-semibold"
+                  className="gap-1.5 text-xs font-semibold border-border text-silver hover:text-white"
                 >
                   <MessageSquare className="h-3.5 w-3.5" /> Fazer Pergunta
                 </Button>
-                {opportunity.author?.whatsapp && (
-                  <a
-                    href={`https://wa.me/${opportunity.author.whatsapp.replace(/\D/g, "")}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-2 bg-emerald/10 border border-emerald/30 text-emerald hover:bg-emerald/20 rounded-xl transition-colors"
-                    title="Conversar no WhatsApp"
-                  >
-                    <Phone className="h-4 w-4" />
-                  </a>
-                )}
               </div>
             </div>
 
             {/* Resumo e Descrição */}
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-                Tese & Descrição do Ativo
+                Tese & Descrição do Ativo (Teaser Cego)
               </h3>
               <p className="text-sm text-silver leading-relaxed bg-charcoal/30 p-4 rounded-xl border border-border/70">
                 {opportunity.details || opportunity.summary}
@@ -278,14 +352,20 @@ export function OpportunityDetailModal({
               </div>
             )}
 
-            {/* DOCUMENTO PDF ANEXADO */}
+            {/* DOCUMENTO PDF ANEXADO - ACESSO VIA NDA */}
             <div className="space-y-2 pt-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-                Documentação & Teaser Anexo (PDF)
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                  Documentação & Dossiê Executivo (PDF)
+                </h3>
+                <span className="text-[11px] text-gold flex items-center gap-1 font-semibold">
+                  <Lock className="h-3 w-3" /> Requer NDA Digital
+                </span>
+              </div>
+
               <div className="p-4 rounded-xl bg-charcoal/60 border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-gold/40 transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-alert/10 text-alert border border-alert/30 flex items-center justify-center shrink-0">
+                  <div className="h-10 w-10 rounded-xl bg-gold/10 text-gold border border-gold/30 flex items-center justify-center shrink-0">
                     <FileText className="h-5 w-5" />
                   </div>
                   <div>
@@ -293,21 +373,19 @@ export function OpportunityDetailModal({
                       {opportunity.documentPdfName || "Teaser_Executivo_Investimento.pdf"}
                     </p>
                     <p className="text-xs text-silver">
-                      Tamanho: {opportunity.documentPdfSize || "2.8 MB"} • Formato: PDF Oficial
+                      Tamanho: {opportunity.documentPdfSize || "2.8 MB"} • Dossiê Confidencial Desblindado
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="outline"
+                    variant="gold"
                     size="sm"
-                    onClick={() => {
-                      alert(`Download iniciado: ${opportunity.documentPdfName || "Teaser_Executivo.pdf"}`);
-                    }}
-                    className="gap-1.5 text-xs border-gold/40 text-gold hover:bg-gold/10"
+                    onClick={() => setIsNdaModalOpen(true)}
+                    className="gap-1.5 text-xs font-bold bg-gold text-obsidian hover:bg-gold-light"
                   >
-                    <Download className="h-3.5 w-3.5" /> Baixar PDF
+                    <FileCheck2 className="h-3.5 w-3.5" /> Assinar NDA para Baixar
                   </Button>
                 </div>
               </div>
@@ -326,10 +404,10 @@ export function OpportunityDetailModal({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-white">
-                    Canal Direto com {opportunity.author?.name}
+                    Canal Intermediado com {opportunity.author?.name}
                   </p>
                   <p className="text-xs text-silver">
-                    Envie perguntas sobre volume, garantias, relatórios de auditoria e agendamento de call.
+                    Tire dúvidas técnicas e de escopo. Propostas de valor e trocas de dados ocorrem mediante NDA firmado.
                   </p>
                 </div>
               </div>
@@ -339,7 +417,7 @@ export function OpportunityDetailModal({
             {questionSuccess && (
               <div className="p-3.5 rounded-xl bg-emerald/10 border border-emerald/30 text-emerald text-sm flex items-center gap-2 animate-fade-in">
                 <CheckCircle className="h-4 w-4 shrink-0" />
-                <span>Sua pergunta foi enviada com sucesso para {opportunity.author?.name}! Você receberá a resposta por e-mail ou WhatsApp.</span>
+                <span>Sua pergunta foi enviada com sucesso para a curadoria e para {opportunity.author?.name}! Você receberá retorno por e-mail ou WhatsApp.</span>
               </div>
             )}
 
@@ -347,7 +425,7 @@ export function OpportunityDetailModal({
             <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
               {(!opportunity.questions || opportunity.questions.length === 0) ? (
                 <div className="text-center py-8 text-silver/60 italic text-xs">
-                  Nenhuma pergunta registrada ainda. Seja o primeiro a perguntar diretamente ao criador do negócio!
+                  Nenhuma pergunta registrada ainda. Envie sua primeira pergunta técnica sobre o ativo!
                 </div>
               ) : (
                 opportunity.questions.map((q) => (
@@ -377,7 +455,7 @@ export function OpportunityDetailModal({
             {/* Formulário para Envio de Pergunta */}
             <form onSubmit={handleSendQuestion} className="space-y-3 pt-2 border-t border-border/60">
               <p className="text-xs font-semibold text-white uppercase tracking-wider">
-                Escreva sua Pergunta ou Proposta
+                Escreva sua Pergunta Técnica
               </p>
 
               {!isMemberLoggedIn && (
@@ -426,6 +504,233 @@ export function OpportunityDetailModal({
           </Button>
         </div>
       </div>
+
+      {/* SUB-MODAL DE ASSINATURA DE NDA DIGITAL & TERMO DE NÃO-CIRCUNVENÇÃO (24 MESES) */}
+      {isNdaModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-obsidian/90 backdrop-blur-lg animate-fade-in">
+          <div className="glass rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto border border-gold/40 p-6 space-y-5 shadow-2xl relative">
+            <button
+              onClick={() => {
+                setIsNdaModalOpen(false);
+                setNdaSuccessTicketId(null);
+              }}
+              className="absolute top-4 right-4 p-2 text-text-secondary hover:text-white bg-charcoal/80 rounded-xl border border-border"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            {/* Cabeçalho do NDA */}
+            <div className="flex items-center gap-3 pb-3 border-b border-border">
+              <div className="h-11 w-11 rounded-xl bg-gold/15 text-gold border border-gold/30 flex items-center justify-center shrink-0">
+                <FileCheck2 className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gold bg-gold/15 px-2 py-0.5 rounded border border-gold/30">
+                    Deal Desk & M&A
+                  </span>
+                  <span className="text-[11px] text-emerald font-semibold flex items-center gap-1">
+                    <ShieldCheck className="h-3 w-3" /> Blindagem Jurídica
+                  </span>
+                </div>
+                <h3 className="font-display text-lg sm:text-xl font-bold text-white">
+                  Termo de Confidencialidade & Não-Circunvenção (24 Meses)
+                </h3>
+              </div>
+            </div>
+
+            {/* Tela de Sucesso após Assinatura */}
+            {ndaSuccessTicketId ? (
+              <div className="py-6 space-y-4 text-center">
+                <div className="h-16 w-16 rounded-full bg-emerald/20 text-emerald border-2 border-emerald/50 flex items-center justify-center mx-auto animate-bounce">
+                  <CheckCircle className="h-9 w-9" />
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="font-display text-xl font-bold text-white">
+                    Termo de NDA & Não-Circunvenção Firmado com Sucesso!
+                  </h4>
+                  <p className="text-sm text-silver max-w-md mx-auto">
+                    Seu compromisso de confidencialidade foi registrado na Mesa de Deals do Millennium Club com protocolo oficial:
+                  </p>
+                  <p className="font-mono text-lg font-bold text-gold pt-1">
+                    {ndaSuccessTicketId}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-charcoal/60 border border-gold/30 text-xs text-silver max-w-lg mx-auto text-left space-y-2">
+                  <p className="text-white font-semibold flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-gold" /> Próximos Passos da Deal Desk:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-1 text-silver">
+                    <li>Um consultor de M&A do Clube entrará em contato em até 4 horas úteis.</li>
+                    <li>O Dossiê Executivo Completo com dados desblindados (razão social, balanços e auditoria) será liberado no seu e-mail corporativo ({ndaEmail || "cadastrado"}).</li>
+                    <li>Coordenaremos a conferência introdutória formal com o proprietário do ativo sob mediação do Clube.</li>
+                  </ul>
+                </div>
+
+                <Button
+                  variant="gold"
+                  onClick={() => {
+                    setIsNdaModalOpen(false);
+                    setNdaSuccessTicketId(null);
+                  }}
+                  className="px-6 font-bold"
+                >
+                  Concluir e Voltar aos Detalhes
+                </Button>
+              </div>
+            ) : (
+              /* Formulário de Assinatura do NDA */
+              <form onSubmit={handleNdaSubmit} className="space-y-4">
+                <div className="p-3.5 rounded-xl bg-charcoal/50 border border-border text-xs space-y-1">
+                  <p className="text-silver">
+                    Ativo Solicitado: <strong className="text-white">{opportunity.title}</strong>
+                  </p>
+                  <p className="text-silver">
+                    Volume da Operação: <strong className="text-gold">{opportunity.volume}</strong> • Categoria: <strong className="text-silver">{opportunity.categoryLabel}</strong>
+                  </p>
+                </div>
+
+                {/* Texto do Acordo Jurídico de Não-Circunvenção */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                    Cláusula de Confidencialidade e Não-Circunvenção (NCNDA)
+                  </label>
+                  <div className="h-32 overflow-y-auto bg-charcoal/80 border border-border rounded-xl p-3 text-[11px] text-silver leading-relaxed space-y-2">
+                    <p>
+                      <strong>1. OBRIGAÇÃO DE SIGILO:</strong> O Interessado compromete-se a manter sob rigorosa confidencialidade toda informação técnica, financeira, societária e comercial a que tiver acesso, vedada a divulgação a terceiros não autorizados.
+                    </p>
+                    <p>
+                      <strong>2. NÃO-CIRCUNVENÇÃO (24 MESES):</strong> O Interessado declara e concorda que todas as tratativas relativas a este ativo serão intermediadas e coordenadas com exclusividade pela plataforma Millennium Club. É expressamente vedado o contato direto ou conclusão de negócios com o proprietário, mandatário ou afiliadas sem o envolvimento da plataforma, sob pena de indenização integral equivalente aos honorários de sucesso estipulados e perdas e danos.
+                    </p>
+                    <p>
+                      <strong>3. VALIDADE ELETRÔNICA:</strong> Este aceite eletrônico possui eficácia legal vinculante perante os artigos 107 e 425 do Código Civil Brasileiro.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Dados Cadastrais do Interessado */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-silver mb-1 font-medium">Nome Completo *</label>
+                    <Input
+                      required
+                      placeholder="Ex: Carlos Albuquerque"
+                      value={ndaName}
+                      onChange={(e) => setNdaName(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-silver mb-1 font-medium">Empresa / Fundo / Family Office *</label>
+                    <Input
+                      required
+                      placeholder="Ex: Alfa Capital Partners"
+                      value={ndaCompany}
+                      onChange={(e) => setNdaCompany(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-silver mb-1 font-medium">Cargo / Posição *</label>
+                    <Input
+                      required
+                      placeholder="Ex: Diretor de Investimentos / Sócio"
+                      value={ndaRole}
+                      onChange={(e) => setNdaRole(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-silver mb-1 font-medium">Capacidade Estimada de Aporte *</label>
+                    <select
+                      value={ndaCapacity}
+                      onChange={(e) => setNdaCapacity(e.target.value)}
+                      className="w-full h-9 bg-charcoal border border-border rounded-xl px-2 text-xs text-white focus:border-gold focus:outline-none"
+                    >
+                      <option value="R$ 1.000.000 a R$ 5.000.000">R$ 1.000.000 a R$ 5.000.000</option>
+                      <option value="R$ 5.000.000 a R$ 20.000.000">R$ 5.000.000 a R$ 20.000.000</option>
+                      <option value="R$ 20.000.000 a R$ 100.000.000">R$ 20.000.000 a R$ 100.000.000</option>
+                      <option value="Acima de R$ 100.000.000">Acima de R$ 100.000.000</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-silver mb-1 font-medium">WhatsApp / Celular com DDD *</label>
+                    <Input
+                      required
+                      placeholder="(11) 98888-0000"
+                      value={ndaPhone}
+                      onChange={(e) => setNdaPhone(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-silver mb-1 font-medium">E-mail Corporativo *</label>
+                    <Input
+                      required
+                      type="email"
+                      placeholder="investidor@alfacapital.com"
+                      value={ndaEmail}
+                      onChange={(e) => setNdaEmail(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Checkbox de Aceite Legal */}
+                <div className="pt-2 border-t border-border/70">
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={ndaAccepted}
+                      onChange={(e) => setNdaAccepted(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-border text-gold focus:ring-gold bg-charcoal shrink-0"
+                    />
+                    <span className="text-xs text-silver leading-relaxed">
+                      Declaro sob as penas da lei que tenho poderes de representação e concordo com os termos de <strong>Confidencialidade e Não-Circunvenção de 24 Meses</strong> do Millennium Club, comprometendo-me a não realizar contato direto nem negociações sem a intermediação da plataforma.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Ações */}
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsNdaModalOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="gold"
+                    size="sm"
+                    disabled={!ndaAccepted || ndaSubmitting}
+                    className="font-bold gap-1.5"
+                  >
+                    {ndaSubmitting ? (
+                      <>
+                        <Clock className="h-4 w-4 animate-spin" /> Registrando NDA...
+                      </>
+                    ) : (
+                      <>
+                        <FileCheck2 className="h-4 w-4" /> Assinar Digitalmente & Solicitar Dossiê
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

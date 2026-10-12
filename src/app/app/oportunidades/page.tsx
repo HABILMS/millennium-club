@@ -27,6 +27,8 @@ import {
   XCircle,
   AlertTriangle,
   User,
+  RotateCcw,
+  Calendar,
 } from "lucide-react";
 import {
   OpportunityItem,
@@ -37,6 +39,7 @@ import {
   fetchOpportunities,
   createOpportunity,
   sendOpportunityQuestion,
+  renewOpportunity,
 } from "@/lib/opportunities";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 import { NewOpportunityModal } from "@/components/opportunities/NewOpportunityModal";
@@ -117,6 +120,31 @@ export default function OportunidadesMemberPage() {
 
     // Persistência no banco Supabase
     await sendOpportunityQuestion(oppId, question.senderName, question.senderContact, question.content);
+  };
+
+  const getDaysRemaining = (expiresAt?: string) => {
+    if (!expiresAt) return 20;
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const handleRenewOpportunity = async (oppId: string) => {
+    const success = await renewOpportunity(oppId, 20);
+    if (success) {
+      setOpportunities((prev) =>
+        prev.map((o) =>
+          o.id === oppId
+            ? {
+                ...o,
+                approvalStatus: "approved",
+                expiresAt: new Date(Date.now() + 20 * 86400000).toISOString(),
+                validityDays: 20,
+              }
+            : o
+        )
+      );
+      showToast("✓ Disponibilidade do negócio renovada por mais 20 dias com sucesso!");
+    }
   };
 
   // Minhas oportunidades cadastradas (ou marcadas como pendentes/reprovadas)
@@ -426,6 +454,42 @@ export default function OportunidadesMemberPage() {
                       <ShieldCheck className="h-3 w-3" /> {opp.author?.badge || "Verificado"}
                     </span>
                   </div>
+
+                  {/* Seção de Validade & Renovação 1-Clique na aba "Minhas Oportunidades" */}
+                  {viewMode === "my" && (
+                    <div className="p-2.5 rounded-xl bg-charcoal border border-border space-y-2 mt-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-silver flex items-center gap-1 text-[11px]">
+                          <Calendar className="h-3 w-3 text-gold" /> Validade do Ativo:
+                        </span>
+                        {getDaysRemaining(opp.expiresAt) <= 0 || opp.approvalStatus === "expired" ? (
+                          <span className="text-alert font-bold text-[10px] bg-alert/15 px-2 py-0.5 rounded">
+                            Expirada (Fora da Vitrine)
+                          </span>
+                        ) : getDaysRemaining(opp.expiresAt) <= 5 ? (
+                          <span className="text-amber-400 font-bold text-[10px] bg-amber-500/15 px-2 py-0.5 rounded animate-pulse">
+                            ⚠️ Restam {getDaysRemaining(opp.expiresAt)} dias
+                          </span>
+                        ) : (
+                          <span className="text-emerald font-bold text-[10px] bg-emerald/15 px-2 py-0.5 rounded">
+                            Disponível ({getDaysRemaining(opp.expiresAt)} dias)
+                          </span>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRenewOpportunity(opp.id);
+                        }}
+                        className="w-full h-7 text-[11px] font-semibold gap-1.5 border-gold/40 text-gold hover:bg-gold/10"
+                      >
+                        <RotateCcw className="h-3 w-3" /> Renovar Disponibilidade (+20 dias)
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </div>
 

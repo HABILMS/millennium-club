@@ -1,4 +1,4 @@
-export type OpportunityApprovalStatus = "pending" | "approved" | "rejected";
+export type OpportunityApprovalStatus = "pending" | "approved" | "rejected" | "expired";
 
 export interface OpportunityAuthor {
   name: string;
@@ -46,6 +46,10 @@ export interface OpportunityItem {
   reviewedBy?: string;
   rejectionReason?: string;
   adminNotes?: string;
+  // Ciclo de Validade & Expiração (mínimo 20 dias)
+  validityDays?: number;
+  expiresAt?: string;
+  lastRenewedAt?: string;
 }
 
 export const opportunityCategories = [
@@ -416,8 +420,9 @@ export async function createOpportunity(item: Partial<OpportunityItem>): Promise
 export async function updateAdminOpportunityStatus(
   id: string,
   approvalStatus: OpportunityApprovalStatus,
-  options?: { rejectionReason?: string; adminNotes?: string; reviewedBy?: string }
+  options?: { rejectionReason?: string; adminNotes?: string; reviewedBy?: string; validityDays?: number }
 ): Promise<boolean> {
+  const minDays = options?.validityDays ? Math.max(20, options.validityDays) : 20;
   try {
     const res = await fetch("/api/admin/opportunities", {
       method: "PATCH",
@@ -428,6 +433,7 @@ export async function updateAdminOpportunityStatus(
         rejectionReason: options?.rejectionReason,
         adminNotes: options?.adminNotes,
         reviewedBy: options?.reviewedBy || "Admin Master",
+        validityDays: minDays,
       }),
     });
     if (res.ok) {
@@ -442,6 +448,9 @@ export async function updateAdminOpportunityStatus(
               adminNotes: options?.adminNotes ?? item.adminNotes,
               reviewedAt: new Date().toISOString(),
               reviewedBy: options?.reviewedBy || "Admin Master",
+              validityDays: minDays,
+              expiresAt: new Date(Date.now() + minDays * 86400000).toISOString(),
+              lastRenewedAt: new Date().toISOString(),
             }
           : item
       );
@@ -463,6 +472,9 @@ export async function updateAdminOpportunityStatus(
           adminNotes: options?.adminNotes ?? item.adminNotes,
           reviewedAt: new Date().toISOString(),
           reviewedBy: options?.reviewedBy || "Admin Master",
+          validityDays: minDays,
+          expiresAt: new Date(Date.now() + minDays * 86400000).toISOString(),
+          lastRenewedAt: new Date().toISOString(),
         }
       : item
   );
@@ -506,4 +518,52 @@ export async function sendOpportunityQuestion(
   saveStoredOpportunities(updated);
   return newQ;
 }
+
+/** Renova a validade da oportunidade por mais X dias (mínimo 20 dias) */
+export async function renewOpportunity(opportunityId: string, days = 20): Promise<boolean> {
+  const minDays = Math.max(20, days);
+  try {
+    const res = await fetch("/api/opportunities/renew", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: opportunityId, days: minDays }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const current = getStoredOpportunities();
+      const updated = current.map((item) =>
+        item.id === opportunityId
+          ? {
+              ...item,
+              expiresAt: data.expiresAt || new Date(Date.now() + minDays * 86400000).toISOString(),
+              approvalStatus: "approved" as OpportunityApprovalStatus,
+              validityDays: minDays,
+              lastRenewedAt: new Date().toISOString(),
+            }
+          : item
+      );
+      saveStoredOpportunities(updated);
+      return true;
+    }
+  } catch (err) {
+    console.warn("Falha ao renovar via API, aplicando localmente:", err);
+  }
+
+  // Fallback local
+  const current = getStoredOpportunities();
+  const updated = current.map((item) =>
+    item.id === opportunityId
+      ? {
+          ...item,
+          expiresAt: new Date(Date.now() + minDays * 86400000).toISOString(),
+          approvalStatus: "approved" as OpportunityApprovalStatus,
+          validityDays: minDays,
+          lastRenewedAt: new Date().toISOString(),
+        }
+      : item
+  );
+  saveStoredOpportunities(updated);
+  return true;
+}
+
 

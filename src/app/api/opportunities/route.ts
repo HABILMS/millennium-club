@@ -38,6 +38,9 @@ export function mapDbRowToOpportunity(row: any): OpportunityItem {
     reviewedBy: row.reviewed_by || undefined,
     rejectionReason: row.rejection_reason || undefined,
     adminNotes: row.admin_notes || undefined,
+    validityDays: row.validity_days || 20,
+    expiresAt: row.expires_at || undefined,
+    lastRenewedAt: row.last_renewed_at || undefined,
   };
 }
 

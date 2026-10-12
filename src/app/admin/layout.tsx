@@ -19,12 +19,16 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  MessageSquare,
+  CreditCard,
 } from "lucide-react";
 
 const adminNavigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Candidaturas", href: "/admin/candidaturas", icon: FileText },
   { name: "Oportunidades", href: "/admin/oportunidades", icon: Briefcase },
+  { name: "Solicitações", href: "/admin/solicitacoes", icon: MessageSquare },
+  { name: "Planos", href: "/admin/planos", icon: CreditCard },
   { name: "Membros", href: "/admin/membros", icon: Users },
   { name: "Empresas", href: "/admin/empresas", icon: Building2 },
   { name: "Selos", href: "/admin/selos", icon: Award },
