@@ -51,6 +51,23 @@ export function MemberLayout({ children }: MemberLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  React.useEffect(() => {
+    async function loadUnread() {
+      try {
+        const email = user?.email ? `?email=${encodeURIComponent(user.email)}` : "";
+        const res = await fetch(`/api/notifications${email}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.unreadCount === "number") {
+            setUnreadCount(data.unreadCount);
+          }
+        }
+      } catch (e) {}
+    }
+    loadUnread();
+  }, [user?.email, pathname]);
 
   return (
     <div className="min-h-screen bg-obsidian flex">
@@ -159,9 +176,13 @@ export function MemberLayout({ children }: MemberLayoutProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              <Link href="/app/notificacoes" className="relative p-2 text-text-secondary hover:text-white transition-colors rounded-lg hover:bg-charcoal">
+              <Link href="/app/notificacoes" className="relative p-2 text-text-secondary hover:text-white transition-colors rounded-lg hover:bg-charcoal" title="Notificações">
                 <Bell className="h-5 w-5" />
-                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-gold text-obsidian text-xs font-bold flex items-center justify-center">3</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-gold text-obsidian text-[10px] font-bold flex items-center justify-center animate-pulse">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </Link>
 
               <div className="h-8 w-px bg-border mx-1" />

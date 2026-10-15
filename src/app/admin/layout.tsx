@@ -21,6 +21,7 @@ import {
   LogOut,
   MessageSquare,
   CreditCard,
+  Calendar,
 } from "lucide-react";
 
 const adminNavigation = [
@@ -28,11 +29,11 @@ const adminNavigation = [
   { name: "Candidaturas", href: "/admin/candidaturas", icon: FileText },
   { name: "Oportunidades", href: "/admin/oportunidades", icon: Briefcase },
   { name: "Solicitações", href: "/admin/solicitacoes", icon: MessageSquare },
+  { name: "Eventos", href: "/admin/eventos", icon: Calendar },
   { name: "Planos", href: "/admin/planos", icon: CreditCard },
   { name: "Membros", href: "/admin/membros", icon: Users },
   { name: "Empresas", href: "/admin/empresas", icon: Building2 },
   { name: "Selos", href: "/admin/selos", icon: Award },
-  { name: "Notificações", href: "/admin/notificacoes", icon: Bell },
   { name: "Auditoria", href: "/admin/auditoria", icon: Activity },
   { name: "Configurações", href: "/admin/configuracoes", icon: Settings },
 ];

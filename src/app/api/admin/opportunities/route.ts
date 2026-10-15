@@ -82,6 +82,36 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Gatilho Automático: Notificação In-App ao Membro
+    const updatedOpp = Array.isArray(data) && data[0] ? data[0] : null;
+    if (updatedOpp) {
+      const authorEmail = updatedOpp.author_data?.email || updatedOpp.created_by_email;
+      const oppTitle = updatedOpp.title || "Oportunidade";
+
+      if (authorEmail) {
+        const { createNotification } = await import("@/lib/notifications");
+        if (approvalStatus === "approved") {
+          await createNotification({
+            userEmail: authorEmail,
+            type: "opportunity_approved",
+            title: "Oportunidade Aprovada!",
+            message: `Sua oportunidade "${oppTitle}" foi aprovada pela curadoria e publicada na vitrine de negócios com validade ativa.`,
+            actionUrl: "/app/oportunidades",
+            metadata: { opportunityId: id, validityDays: updatePayload.validity_days },
+          });
+        } else if (approvalStatus === "rejected") {
+          await createNotification({
+            userEmail: authorEmail,
+            type: "opportunity_rejected",
+            title: "Oportunidade Não Aprovada",
+            message: `Sua oportunidade "${oppTitle}" necessita de revisão. Motivo: ${rejectionReason || "Diretrizes de compliance pendentes."}`,
+            actionUrl: "/app/oportunidades",
+            metadata: { opportunityId: id, rejectionReason },
+          });
+        }
+      }
+    }
+
     return NextResponse.json({ success: true, updated: data });
   } catch (err: any) {
     console.error("[api/admin/opportunities] Erro fatal no PATCH:", err?.message);

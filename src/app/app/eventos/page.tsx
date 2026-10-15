@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
@@ -13,109 +13,123 @@ import {
   Users,
   CheckCircle,
   Sparkles,
-  Share2,
-  Bookmark,
+  Loader2,
+  CheckCircle2,
+  X,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { EventItem, defaultMockEvents } from "@/lib/events";
 
 export const dynamic = "force-dynamic";
 
-export interface EventItem {
-  id: string;
-  title: string;
-  category: "presencial" | "seminario" | "webinar";
-  categoryLabel: string;
-  date: string;
-  time: string;
-  location: string;
-  speakers: string[];
-  description: string;
-  capacity: string;
-  registeredCount: number;
-}
-
-const mockEvents: EventItem[] = [
-  {
-    id: "evt-1",
-    title: "Mesa Redonda: Estruturação de Transações de Energia Solar & Crédito",
-    category: "webinar",
-    categoryLabel: "Webinar Online",
-    date: "25 de Setembro, 2026",
-    time: "19:00 - 20:30 (BRT)",
-    location: "Transmissão Zoom Exclusiva para Membros",
-    speakers: ["Dr. Marcelo Guimarães (Especialista M&A)", "Ana Paula Siqueira (VP Originação Solar)"],
-    description: "Discussão prática sobre precificação de passivos fotovoltaicos, securitização de créditos de energia e estruturação de PPAs de longo prazo.",
-    capacity: "100 vagas online",
-    registeredCount: 64,
-  },
-  {
-    id: "evt-2",
-    title: "Seminário Anual de Mercado Imobiliário & Redes Hoteleiras",
-    category: "seminario",
-    categoryLabel: "Seminário",
-    date: "10 de Outubro, 2026",
-    time: "09:00 - 18:00 (BRT)",
-    location: "Hotel Unique - São Paulo, SP",
-    speakers: ["Carlos Eduardo Nobre (CEO Fund)", "Fernanda Lins (Diretora Real Estate)"],
-    description: "Encontro presencial de executivos para debater o cenário de M&A hoteleiro, retrofit de empreendimentos e oportunidades buy-side no Brasil.",
-    capacity: "120 convidados presenciais",
-    registeredCount: 88,
-  },
-  {
-    id: "evt-3",
-    title: "Rodada Fechada de Co-Investimento & Societário para Projetos RSU",
-    category: "presencial",
-    categoryLabel: "Evento Presencial",
-    date: "22 de Outubro, 2026",
-    time: "15:00 - 19:30 (BRT)",
-    location: "Clube Millenium HQ - Faria Lima, SP",
-    speakers: ["Comitê de Admissão & Originação RSU"],
-    description: "Apresentação restrita de 3 projetos de usinas de resíduos sólidos urbanos pré-operacionais buscando parceiros equity e de tecnologia.",
-    capacity: "35 investidores qualificados",
-    registeredCount: 29,
-  },
-  {
-    id: "evt-4",
-    title: "Webinar: Créditos de Carbono VERRA & Descarbonização Corporativa",
-    category: "webinar",
-    categoryLabel: "Webinar Online",
-    date: "05 de Novembro, 2026",
-    time: "17:00 - 18:15 (BRT)",
-    location: "Plataforma Virtual Millennium",
-    speakers: ["Gabriel Ramos (Head ESG)", "Juliana Santos (Auditora Verra)"],
-    description: "Análise de tendências de preços de carbono no mercado voluntário e estratégias de liquidez para ativos de conservação florestal.",
-    capacity: "200 participantes",
-    registeredCount: 112,
-  },
-];
-
 export default function EventosPage() {
+  const { user } = useAuth();
+  const [events, setEvents] = React.useState<EventItem[]>(defaultMockEvents);
   const [activeTab, setActiveTab] = React.useState<"todos" | "presencial" | "seminario" | "webinar">("todos");
-  const [registeredEvents, setRegisteredEvents] = React.useState<string[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [rsvpLoadingId, setRsvpLoadingId] = React.useState<string | null>(null);
+  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const fetchEvents = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const email = user?.email ? `?email=${encodeURIComponent(user.email)}` : "";
+      const res = await fetch(`/api/events${email}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.events) && data.events.length > 0) {
+          setEvents(data.events);
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao buscar eventos:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.email]);
+
+  React.useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
 
   const filteredEvents = React.useMemo(() => {
-    if (activeTab === "todos") return mockEvents;
-    return mockEvents.filter((e) => e.category === activeTab);
-  }, [activeTab]);
+    if (activeTab === "todos") return events;
+    return events.filter((e) => e.category === activeTab);
+  }, [events, activeTab]);
 
-  const toggleRsvp = (eventId: string) => {
-    setRegisteredEvents((prev) =>
-      prev.includes(eventId) ? prev.filter((id) => id !== eventId) : [...prev, eventId]
+  const handleToggleRsvp = async (eventItem: EventItem) => {
+    const isCurrentlyRegistered = eventItem.isRegistered;
+    setRsvpLoadingId(eventItem.id);
+
+    // Atualização otimista
+    setEvents((prev) =>
+      prev.map((e) =>
+        e.id === eventItem.id
+          ? {
+              ...e,
+              isRegistered: !isCurrentlyRegistered,
+              registeredCount: isCurrentlyRegistered
+                ? Math.max(0, e.registeredCount - 1)
+                : e.registeredCount + 1,
+            }
+          : e
+      )
     );
+
+    try {
+      const res = await fetch(`/api/events/${eventItem.id}/rsvp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user?.email,
+          name: user?.user_metadata?.first_name || user?.email?.split("@")[0],
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.registered) {
+          showToast(`Sua inscrição no evento "${eventItem.title}" foi confirmada!`);
+        } else {
+          showToast(`Inscrição no evento "${eventItem.title}" cancelada.`);
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao processar RSVP:", e);
+    } finally {
+      setRsvpLoadingId(null);
+    }
   };
 
   return (
     <div className="space-y-8 animate-fade-up">
+      {/* Toast */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-charcoal/95 border border-gold/40 text-white px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md animate-fade-in">
+          <CheckCircle2 className="h-5 w-5 text-emerald shrink-0" />
+          <span className="text-sm font-medium">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="ml-2 text-text-secondary hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <Badge variant="gold" size="sm" className="mb-1.5">
-            <Sparkles className="h-3.5 w-3.5 mr-1" /> Agenda Exclusiva
+          <Badge variant="gold" size="sm" className="mb-1.5 font-bold">
+            <Sparkles className="h-3.5 w-3.5 mr-1" /> Agenda Exclusiva de Deals & Networking
           </Badge>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">
             Agenda de Eventos, Seminários & Webinars
           </h1>
           <p className="mt-1 text-silver text-sm">
-            Participe dos encontros de originação, seminários presenciais e rodadas de negócios do Millennium Club.
+            Participe dos encontros de originação, seminários presenciais e rodadas fechadas do Millennium Club.
           </p>
         </div>
       </div>
@@ -131,7 +145,7 @@ export default function EventosPage() {
               : "bg-charcoal/50 text-silver hover:bg-charcoal hover:text-white"
           )}
         >
-          Todos os Eventos ({mockEvents.length})
+          Todos os Eventos ({events.length})
         </button>
         <button
           onClick={() => setActiveTab("presencial")}
@@ -169,96 +183,119 @@ export default function EventosPage() {
       </div>
 
       {/* Grid de Eventos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredEvents.map((evt) => {
-          const isRegistered = registeredEvents.includes(evt.id);
-          return (
-            <Card key={evt.id} className="glass hover:border-gold/40 transition-all flex flex-col justify-between">
-              <CardHeader className="p-6 border-b border-border/50">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "font-semibold text-xs",
-                      evt.category === "webinar" && "bg-blue-500/10 text-blue-400 border-blue-500/30",
-                      evt.category === "seminario" && "bg-purple-500/10 text-purple-400 border-purple-500/30",
-                      evt.category === "presencial" && "bg-emerald/10 text-emerald border-emerald/30"
-                    )}
-                  >
-                    {evt.categoryLabel}
-                  </Badge>
-                  <span className="text-xs text-text-secondary flex items-center gap-1">
-                    <Users className="h-3.5 w-3.5 text-gold" /> {evt.registeredCount + (isRegistered ? 1 : 0)} inscritos
-                  </span>
-                </div>
-                <CardTitle className="font-display text-lg text-white leading-snug">
-                  {evt.title}
-                </CardTitle>
-              </CardHeader>
+      {isLoading ? (
+        <div className="p-16 text-center text-silver">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-gold mb-3" />
+          <p className="text-sm">Carregando programação de eventos...</p>
+        </div>
+      ) : filteredEvents.length === 0 ? (
+        <div className="p-16 text-center glass rounded-2xl border border-border">
+          <CalendarIcon className="h-10 w-10 text-text-secondary mx-auto mb-3 opacity-40" />
+          <h3 className="font-display text-lg font-semibold text-white">Nenhum evento nesta categoria</h3>
+          <p className="text-xs text-silver mt-1">Fique atento aos próximos comunicados da diretoria.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {filteredEvents.map((evt) => {
+            const isRegistered = Boolean(evt.isRegistered);
+            const isProcessing = rsvpLoadingId === evt.id;
 
-              <CardContent className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-silver">
-                    <div className="flex items-center gap-2">
-                      <CalendarIcon className="h-4 w-4 text-gold flex-shrink-0" />
-                      <span>{evt.date}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-gold flex-shrink-0" />
-                      <span>{evt.time}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2 text-xs text-silver">
-                    {evt.category === "webinar" ? (
-                      <Video className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <MapPin className="h-4 w-4 text-emerald flex-shrink-0 mt-0.5" />
-                    )}
-                    <span>{evt.location}</span>
-                  </div>
-
-                  <p className="text-xs text-silver leading-relaxed">
-                    {evt.description}
-                  </p>
-
-                  <div className="pt-2">
-                    <span className="text-[11px] font-semibold text-white uppercase tracking-wider block mb-1">
-                      Palestrantes & Convidados:
+            return (
+              <Card key={evt.id} className="glass hover:border-gold/40 transition-all flex flex-col justify-between">
+                <CardHeader className="p-6 border-b border-border/50">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-semibold text-xs",
+                        evt.category === "webinar" && "bg-blue-500/10 text-blue-400 border-blue-500/30",
+                        evt.category === "seminario" && "bg-purple-500/10 text-purple-400 border-purple-500/30",
+                        evt.category === "presencial" && "bg-emerald/10 text-emerald border-emerald/30"
+                      )}
+                    >
+                      {evt.categoryLabel}
+                    </Badge>
+                    <span className="text-xs text-text-secondary flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5 text-gold" /> {evt.registeredCount} inscritos
                     </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {evt.speakers.map((spk, i) => (
-                        <span key={i} className="text-xs bg-charcoal border border-border px-2.5 py-1 rounded-lg text-silver">
-                          👤 {spk}
-                        </span>
-                      ))}
-                    </div>
                   </div>
-                </div>
+                  <CardTitle className="font-display text-lg text-white leading-snug">
+                    {evt.title}
+                  </CardTitle>
+                </CardHeader>
 
-                <div className="pt-4 border-t border-border/50 flex items-center justify-between gap-3">
-                  <span className="text-xs text-text-secondary">{evt.capacity}</span>
+                <CardContent className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-silver">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4 text-gold flex-shrink-0" />
+                        <span>{evt.date}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-gold flex-shrink-0" />
+                        <span>{evt.time}</span>
+                      </div>
+                    </div>
 
-                  <Button
-                    variant={isRegistered ? "outline" : "gold"}
-                    size="sm"
-                    onClick={() => toggleRsvp(evt.id)}
-                    className={cn(isRegistered && "border-emerald text-emerald bg-emerald/10 hover:bg-emerald/20")}
-                  >
-                    {isRegistered ? (
-                      <>
-                        <CheckCircle className="h-4 w-4 mr-1 text-emerald" /> Vaga Garantida
-                      </>
-                    ) : (
-                      "Garantir Minha Vaga"
+                    <div className="flex items-start gap-2 text-xs text-silver">
+                      {evt.category === "webinar" ? (
+                        <Video className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <MapPin className="h-4 w-4 text-emerald flex-shrink-0 mt-0.5" />
+                      )}
+                      <span>{evt.location}</span>
+                    </div>
+
+                    <p className="text-xs text-silver leading-relaxed">
+                      {evt.description}
+                    </p>
+
+                    {Array.isArray(evt.speakers) && evt.speakers.length > 0 && (
+                      <div className="pt-2">
+                        <span className="text-[11px] font-semibold text-white uppercase tracking-wider block mb-1">
+                          Palestrantes & Convidados:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {evt.speakers.map((spk, i) => (
+                            <span key={i} className="text-xs bg-charcoal border border-border px-2.5 py-1 rounded-lg text-silver">
+                              👤 {spk}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-border/50 flex items-center justify-between gap-3">
+                    <span className="text-xs text-text-secondary">{evt.capacity}</span>
+
+                    <Button
+                      variant={isRegistered ? "outline" : "gold"}
+                      size="sm"
+                      disabled={isProcessing}
+                      onClick={() => handleToggleRsvp(evt)}
+                      className={cn(
+                        "font-bold text-xs",
+                        isRegistered && "border-emerald text-emerald bg-emerald/10 hover:bg-emerald/20"
+                      )}
+                    >
+                      {isProcessing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isRegistered ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-1 text-emerald" /> Vaga Garantida
+                        </>
+                      ) : (
+                        "Garantir Minha Vaga"
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

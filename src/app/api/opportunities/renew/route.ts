@@ -41,11 +41,24 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const targetOpp = rpcData || data;
+    if (targetOpp) {
+      const authorEmail = targetOpp.author_data?.email || targetOpp.created_by_email;
+      const oppTitle = targetOpp.title || "Oportunidade";
+      if (authorEmail) {
+        const { createNotification } = await import("@/lib/notifications");
+        await createNotification({
+          userEmail: authorEmail,
+          type: "opportunity_expiring",
+          title: "Oportunidade Renovada!",
+          message: `A oportunidade "${oppTitle}" foi renovada com sucesso por mais ${validityDays} dias.`,
+          actionUrl: "/app/oportunidades",
+          metadata: { opportunityId: id, validityDays, expiresAt },
+        });
+      }
     }
 
-    return NextResponse.json({ success: true, opportunity: data, expiresAt });
+    return NextResponse.json({ success: true, opportunity: targetOpp, expiresAt });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Erro ao renovar oportunidade" }, { status: 500 });
   }

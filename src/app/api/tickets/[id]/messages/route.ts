@@ -74,6 +74,28 @@ export async function POST(
 
     await supabase.from("tickets").update(updateTicketPayload).eq("id", id);
 
+    // Gatilho Automático: Notificação ao Membro quando Admin responde
+    if (senderType === "admin") {
+      const { data: tck } = await supabase
+        .from("tickets")
+        .select("author_email, ticket_number, subject")
+        .eq("id", id)
+        .single();
+
+      if (tck?.author_email) {
+        const { createNotification } = await import("@/lib/notifications");
+        const snippet = content.length > 90 ? `${content.slice(0, 90)}...` : content;
+        await createNotification({
+          userEmail: tck.author_email,
+          type: "ticket_reply",
+          title: `Resposta no Chamado ${tck.ticket_number}`,
+          message: `A administração respondeu à sua solicitação "${tck.subject}": "${snippet}"`,
+          actionUrl: "/app/solicitacoes",
+          metadata: { ticketId: id, ticketNumber: tck.ticket_number },
+        });
+      }
+    }
+
     return NextResponse.json({ success: true, message: newMsg });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Erro no envio da mensagem" }, { status: 500 });
