@@ -3,22 +3,48 @@
 -- =============================================================================
 
 -- 1. TABELA DE NOTIFICAÇÕES IN-APP
+-- Cria a tabela caso não exista
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
-  user_email text NOT NULL,
-  type text NOT NULL DEFAULT 'system', 
-  -- Tipos: 'opportunity_approved', 'opportunity_rejected', 'opportunity_expiring', 
-  --        'ticket_reply', 'ticket_created', 'event_rsvp', 'system', 'welcome'
+  user_id uuid REFERENCES public.profiles (id) ON DELETE CASCADE,
   title text NOT NULL,
-  message text NOT NULL,
-  read boolean NOT NULL DEFAULT false,
-  action_url text,
-  metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  read_at timestamptz
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Adiciona/garante todas as colunas necessárias sem conflito com schemas pré-existentes
+ALTER TABLE public.notifications
+  ADD COLUMN IF NOT EXISTS user_email text,
+  ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'system',
+  ADD COLUMN IF NOT EXISTS message text,
+  ADD COLUMN IF NOT EXISTS read boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS action_url text,
+  ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS read_at timestamptz;
+
+-- Migra e sincroniza campos legados caso existam (body, href, kind, read_at)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'body') THEN
+    UPDATE public.notifications SET message = body WHERE message IS NULL AND body IS NOT NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'href') THEN
+    UPDATE public.notifications SET action_url = href WHERE action_url IS NULL AND href IS NOT NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'kind') THEN
+    UPDATE public.notifications SET type = kind WHERE (type = 'system' OR type IS NULL) AND kind IS NOT NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'read_at') THEN
+    UPDATE public.notifications SET read = true WHERE read_at IS NOT NULL;
+  END IF;
+END $$;
+
+-- Preenche user_email a partir de profiles caso haja user_id
+UPDATE public.notifications n
+SET user_email = p.email
+FROM public.profiles p
+WHERE n.user_id = p.id AND (n.user_email IS NULL OR n.user_email = '');
+
+-- Índices otimizados
 CREATE INDEX IF NOT EXISTS idx_notifications_user_email ON public.notifications (lower(user_email), created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON public.notifications (read);
@@ -26,28 +52,33 @@ CREATE INDEX IF NOT EXISTS idx_notifications_read ON public.notifications (read)
 -- Políticas RLS para Notificações
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "notifications_own" ON public.notifications;
+DROP POLICY IF EXISTS "notifications_own_update" ON public.notifications;
+DROP POLICY IF EXISTS "notifications_admin_write" ON public.notifications;
 DROP POLICY IF EXISTS "Users can view their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update their own notifications read status" ON public.notifications;
+DROP POLICY IF EXISTS "Service and admins can insert notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Service and authenticated can insert notifications" ON public.notifications;
+
 CREATE POLICY "Users can view their own notifications"
   ON public.notifications
   FOR SELECT
   USING (
     auth.uid() = user_id 
-    OR lower(user_email) = lower(auth.jwt() ->> 'email')
-    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
+    OR (user_email IS NOT NULL AND lower(user_email) = lower(auth.jwt() ->> 'email'))
+    OR public.is_admin()
   );
 
-DROP POLICY IF EXISTS "Users can update their own notifications read status" ON public.notifications;
 CREATE POLICY "Users can update their own notifications read status"
   ON public.notifications
   FOR UPDATE
   USING (
     auth.uid() = user_id 
-    OR lower(user_email) = lower(auth.jwt() ->> 'email')
-    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
+    OR (user_email IS NOT NULL AND lower(user_email) = lower(auth.jwt() ->> 'email'))
+    OR public.is_admin()
   );
 
-DROP POLICY IF EXISTS "Service and admins can insert notifications" ON public.notifications;
-CREATE POLICY "Service and admins can insert notifications"
+CREATE POLICY "Service and authenticated can insert notifications"
   ON public.notifications
   FOR INSERT
   WITH CHECK (true);
@@ -87,7 +118,7 @@ DROP POLICY IF EXISTS "Admins can manage events" ON public.events;
 CREATE POLICY "Admins can manage events"
   ON public.events
   FOR ALL
-  USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  USING (public.is_admin());
 
 -- 3. TABELA DE RSVPs (INSCRIÇÕES EM EVENTOS)
 CREATE TABLE IF NOT EXISTS public.event_rsvps (
@@ -111,8 +142,8 @@ CREATE POLICY "Users can view and manage their RSVPs"
   FOR ALL
   USING (
     auth.uid() = user_id 
-    OR lower(user_email) = lower(auth.jwt() ->> 'email')
-    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
+    OR (user_email IS NOT NULL AND lower(user_email) = lower(auth.jwt() ->> 'email'))
+    OR public.is_admin()
   );
 
 -- 4. POVOAMENTO INICIAL DE EVENTOS (Se não existirem)
